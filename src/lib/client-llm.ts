@@ -189,10 +189,16 @@ export async function streamFromBrowser(
     }
     const msg = err instanceof Error ? err.message : String(err);
     if (/failed to fetch|networkerror|cors/i.test(msg)) {
+      // Provider doesn't support CORS (browser-direct calls).
+      // Give a clear, actionable message.
+      const isGroq = /groq/i.test(baseURL);
       return {
         text: "",
-        error: `Browser couldn't reach ${config.provider}. This might be a CORS issue — the provider may not allow direct browser requests. Try a different provider or use the platform demo model.`,
-      };
+        error: isGroq
+          ? `Groq doesn't allow direct browser requests (no CORS support). To use your Groq key, switch to OpenRouter and select a Groq model (e.g. groq/llama-3.3-70b-versatile). OpenRouter supports browser-direct calls and works from any IP.`
+          : `${config.provider} doesn't allow direct browser requests (CORS blocked). Try OpenRouter or the platform demo model.`,
+        corsBlocked: true,
+      } as ClientStreamResult & { corsBlocked: boolean };
     }
     return { text: "", error: msg };
   }

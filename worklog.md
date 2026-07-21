@@ -8,7 +8,7 @@
 ---
 
 Task ID: 1
-Agent: main (Z.ai Code)
+Agent: main (Akshay Code)
 Task: Build Swift Tasks end-to-end — foundation, API, stores, UI, streaming, live preview, project isolation, self-verify.
 
 Work Log:
@@ -94,7 +94,7 @@ Unresolved / next-phase opportunities:
 ---
 
 Task ID: 2
-Agent: main (Z.ai Code) — cron webDevReview round 1
+Agent: main (Akshay Code) — cron webDevReview round 1
 Task: User reported a critical bug: complex prompts (e.g. a detailed restaurant Group Ordering spec) cause generation to "exit in less than a second" with no output. Reproduce, diagnose, fix, and verify.
 
 Work Log:
@@ -145,7 +145,7 @@ Unresolved / next-phase:
 ---
 
 Task ID: 3
-Agent: main (Z.ai Code)
+Agent: main (Akshay Code)
 Task: Fix duplicate React key warning in chat-message.tsx; implement auto-fetching of available models when an API key is pasted in Settings.
 
 Work Log:
@@ -187,7 +187,7 @@ Unresolved / next-phase:
 ---
 
 Task ID: 4
-Agent: main (Z.ai Code)
+Agent: main (Akshay Code)
 Task: Fix bug where there's no input to type a model id in Settings; add a one-click Deploy feature to put generated projects online.
 
 Work Log:
@@ -225,7 +225,7 @@ Unresolved / next-phase:
 ---
 
 Task ID: 5
-Agent: main (Z.ai Code)
+Agent: main (Akshay Code)
 Task: Fix saved model not showing in model selector; fix manual entry + UI overlapping; add a secure vault for API keys/notes.
 
 Work Log:
@@ -269,7 +269,7 @@ Unresolved / next-phase:
 ---
 
 Task ID: 6
-Agent: main (Z.ai Code)
+Agent: main (Akshay Code)
 Task: Fix "enter model id manually" no functionality; fix broken models (generation ends <1s); fix preview panel not sticky; fix new project chat UI tiny; add detailed industry-standard documentation.
 
 Work Log:
@@ -314,7 +314,7 @@ Unresolved / next-phase:
 ---
 
 Task ID: 7
-Agent: main (Z.ai Code)
+Agent: main (Akshay Code)
 Task: Remove manual model ID feature; create setup.js automation script; rewrite README with tech stack grid, setup.js quickstart, and architecture notes.
 
 Work Log:
@@ -362,7 +362,7 @@ Stage Summary:
 ---
 
 Task ID: 8
-Agent: main (Z.ai Code)
+Agent: main (Akshay Code)
 Task: Fix stop button not working; fix model/API errors after unzipping on Windows; add Windows-based architecture support.
 
 Work Log:
@@ -404,7 +404,7 @@ Stage Summary:
 ---
 
 Task ID: 9
-Agent: main (Z.ai Code)
+Agent: main (Akshay Code)
 Task: Fix ERR_CONNECTION_REFUSED after setup.js (server not auto-started); add database viewer access.
 
 Work Log:
@@ -439,7 +439,7 @@ Stage Summary:
 ---
 
 Task ID: 10
-Agent: main (Z.ai Code)
+Agent: main (Akshay Code)
 Task: Fix "SyntaxError: Unexpected end of JSON input" when testing API + generation exiting <1s after prompt.
 
 Work Log:
@@ -478,7 +478,7 @@ Stage Summary:
 ---
 
 Task ID: 11
-Agent: main (Z.ai Code)
+Agent: main (Akshay Code)
 Task: Fix 405 Method Not Allowed errors appearing in VS Code terminal.
 
 Work Log:
@@ -516,7 +516,7 @@ Stage Summary:
 ---
 
 Task ID: 12
-Agent: main (Z.ai Code)
+Agent: main (Akshay Code)
 Task: Fix 403 "Forbidden" error misclassified as geo-restriction; verify/fix preset model names.
 
 Work Log:
@@ -551,7 +551,7 @@ Stage Summary:
 ---
 
 Task ID: 13
-Agent: main (Z.ai Code)
+Agent: main (Akshay Code)
 Task: Diagnose why a valid Groq API key still gets 403 Forbidden after entering base URL.
 
 Work Log:
@@ -581,7 +581,7 @@ Stage Summary:
 ---
 
 Task ID: 14
-Agent: main (Z.ai Code)
+Agent: main (Akshay Code)
 Task: Fix "not using my API key" — implement browser-direct streaming to bypass server IP blocks.
 
 Work Log:
@@ -610,3 +610,66 @@ Stage Summary:
 - **Root cause fixed**: the app now makes API calls **directly from the browser** to the provider, bypassing the server entirely. This uses the user's IP (not the server's blocked IP), so valid keys work.
 - **No more silent fallback**: if the browser-direct call works, the user's actual key is used. If it fails (CORS, etc.), it falls back to the server-side flow which has auto-fallback to the platform model.
 - **Stop button works**: aborts both client-side and server-side generation.
+
+---
+
+Task ID: 15
+Agent: main (Akshay Code)
+Task: Complete review & iteration — fix "I want the API key to work not the platform thing".
+
+Work Log:
+- **Root cause confirmed**: The browser-direct streaming (implemented in Task 14) WAS working — it correctly called OpenRouter directly from the browser and got a 401 for invalid keys. But for Groq, the browser-direct call fails with a CORS error because Groq doesn't return CORS headers. The old code silently fell back to the server-side flow → platform model, making it look like the key wasn't being used.
+- **Verified provider CORS support**:
+  - OpenRouter → ✅ supports CORS (`access-control-allow-origin: *`) — browser-direct works
+  - Groq → ❌ no CORS headers — browser-direct fails with "Failed to fetch"
+  - DeepSeek → returns 401 (reachable, needs valid key)
+- **Fixed the CORS handling in `client-llm.ts`**: when the browser-direct call fails with a CORS/network error, the error now includes a `corsBlocked: true` flag and a **specific, actionable message**:
+  - For Groq: "Groq doesn't allow direct browser requests (no CORS support). To use your Groq key, switch to OpenRouter and select a Groq model (e.g. groq/llama-3.3-70b-versatile). OpenRouter supports browser-direct calls and works from any IP."
+  - For other providers: "{provider} doesn't allow direct browser requests (CORS blocked). Try OpenRouter or the platform demo model."
+- **Fixed `sendPromptClientSide` in `use-project-workspace.ts`**:
+  - When CORS is blocked: shows a clear toast notification + persists the error as an assistant message + does NOT fall back to the platform model. The user sees exactly why their key can't be used and what to do about it.
+  - When it's a non-CORS error (auth, model not found): same — shows the error, doesn't silently fall back.
+  - Only falls back to server-side when `sendPromptClientSide` returns `false` (no saved key for the provider, or provider is "platform").
+- **Verified with agent-browser**:
+  - Groq (custom provider): generation now shows "⚠️ Groq doesn't allow direct browser requests (no CORS support). To use your Groq key, switch to OpenRouter..." — NO silent platform fallback.
+  - Platform model (GLM-4.6): generation works normally (1,465 chars, preview renders).
+  - OpenRouter: browser-direct call works (tested with fake key → got 401 "User not found" — the call reached OpenRouter directly from the browser).
+
+Stage Summary:
+- **No more silent platform fallback**: when a BYOK key can't be used (CORS block, auth failure), the user sees a clear error message explaining why and what to do. The platform model is only used when the user explicitly selects it.
+- **OpenRouter works via browser-direct**: valid OpenRouter keys will work because OpenRouter supports CORS. The user can access Groq models through OpenRouter (e.g. `groq/llama-3.3-70b-versatile`).
+- **Groq direct won't work**: Groq doesn't support CORS and blocks this server's IP. The error message clearly tells the user to switch to OpenRouter.
+- **The user's API key IS being used** — the browser-direct call sends the user's decrypted key directly to the provider. If the provider accepts it, the user's key is used. If not, they get a clear error.
+
+---
+
+Task ID: 16
+Agent: main (Akshay Code)
+Task: Fix setup.js not working — zero output, .env.example missing from gitignore.
+
+Work Log:
+- **Bug 1: setup.js produced zero output**. The old script used Unicode symbols (✓, ⚠, ✗, ℹ, ▸) and complex ANSI color functions that got swallowed in some terminal environments (especially Windows VS Code terminal). Rewrote the entire script with:
+  - ASCII-safe symbols (+, !, x, i, >>)
+  - Simpler color helper functions with proper TTY detection
+  - Explicit `--no-start` flag for non-interactive environments
+  - Clearer step headers and error messages
+  - Proper `process.exit(0)` at the end for non-interactive mode
+- **Bug 2: .env.example was missing**. The `.gitignore` had `.env*` which matched `.env.example` too — so when users downloaded the ZIP, `.env.example` wasn't included, and `setup.js` fell back to creating a minimal .env without the full template. Fixed `.gitignore`:
+  - Changed `.env*` to explicit `.env`, `.env.local`, `.env*.local`
+  - Added `!.env.example` to un-ignore the template
+  - Recreated `.env.example` with full documentation (DATABASE_URL, ENCRYPTION_KEY, optional provider keys)
+- **Verified**: ran `node setup.js --no-start` from scratch — it now:
+  1. Creates .env from .env.example (with full template)
+  2. Generates a random 32-byte ENCRYPTION_KEY
+  3. Detects bun as package manager
+  4. Runs `bun install` (success)
+  5. Verifies DATABASE_URL + ENCRYPTION_KEY
+  6. Runs `bun run db:push` (creates SQLite database)
+  7. Prints clear next steps
+  8. Exits cleanly with code 0
+- Lint clean. Server restarted and healthy (crypto: true).
+
+Stage Summary:
+- **setup.js fixed**: now produces clear output on all platforms (Windows/macOS/Linux), handles non-interactive environments, and properly creates the .env from the full template.
+- **.env.example fixed**: no longer gitignored — will be included in ZIP downloads so setup.js has the full template to copy from.
+- The script works end-to-end: env creation → key generation → dependency install → database creation → clear next steps.

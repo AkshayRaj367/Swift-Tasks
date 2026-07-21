@@ -18,7 +18,7 @@ import { getProjectStore } from "@/store/project-stores";
 import { useAppStore } from "@/store/app-store";
 import type { ChatMessage, ProjectFile, ProjectSummary, StreamEvent } from "@/lib/types";
 import { toast } from "@/hooks/use-toast";
-import { streamFromBrowser, findKeyIdForProvider, fetchDecryptedKey } from "@/lib/client-llm";
+import { streamFromBrowser, findKeyIdForProvider, fetchDecryptedKey, type ClientStreamResult } from "@/lib/client-llm";
 import { FileStreamParser } from "@/lib/file-parser";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/constants";
 
@@ -290,17 +290,69 @@ export function useProjectWorkspace(projectId: string | null) {
       }
 
       if (result.error) {
-        // If it's a CORS error, fall back to server-side.
-        if (/cors|network/i.test(result.error)) {
-          store.getState().setLive({ isRunning: false });
-          return false; // fall back to server-side
+        // Check if this is a CORS block (provider doesn't support browser-direct calls).
+        const corsResult = result as ClientStreamResult & { corsBlocked?: boolean };
+        if (corsResult.corsBlocked) {
+          // CORS block — show a clear error, DON'T fall back to platform.
+          // The user needs to switch providers, not silently use the platform model.
+          store.getState().setLive({ isRunning: false, error: result.error, step: "Error" });
+          toast({
+            title: "Provider doesn't support browser-direct calls",
+            description: result.error,
+            variant: "destructive",
+          });
+          // Persist the error as an assistant message.
+          await fetch(`/api/projects/${projectId}/messages`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              role: "assistant",
+              content: `⚠️ ${result.error}`,
+              meta: JSON.stringify({ error: result.error }),
+              tokens: 0,
+            }),
+          }).catch(() => {});
+          // Reconcile from server.
+          try {
+            const res = await fetch(`/api/projects/${projectId}`);
+            if (res.ok) {
+              const d = await res.json();
+              store.getState().setMessages(d.messages);
+              store.getState().setProject(d.project);
+            }
+          } catch {
+            /* ignore */
+          }
+          return true; // handled — do NOT fall back to server-side/platform
         }
+        // Non-CORS error (auth, model not found, etc.) — show it.
         store.getState().setLive({ isRunning: false, error: result.error, step: "Error" });
         toast({
           title: "Generation failed",
           description: result.error,
           variant: "destructive",
         });
+        // Persist the error as an assistant message.
+        await fetch(`/api/projects/${projectId}/messages`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            role: "assistant",
+            content: `⚠️ ${result.error}`,
+            meta: JSON.stringify({ error: result.error }),
+            tokens: 0,
+          }),
+        }).catch(() => {});
+        try {
+          const res = await fetch(`/api/projects/${projectId}`);
+          if (res.ok) {
+            const d = await res.json();
+            store.getState().setMessages(d.messages);
+            store.getState().setProject(d.project);
+          }
+        } catch {
+          /* ignore */
+        }
         return true; // handled (don't fall back)
       }
 
