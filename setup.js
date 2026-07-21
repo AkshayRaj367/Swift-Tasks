@@ -114,6 +114,36 @@ function runInstall(manager) {
 }
 
 /**
+ * Run the Prisma db:push command to create/migrate the database schema.
+ * This is cross-platform (works on Windows, macOS, Linux).
+ */
+function runDbPush(manager) {
+  const cmd = `${manager} run db:push`;
+  log.info(`Running: ${c.dim(cmd)}`);
+  try {
+    execSync(cmd, { stdio: "inherit", cwd: ROOT, shell: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ensure the db/ directory exists (for fresh clones where it's gitignored).
+ */
+function ensureDbDir() {
+  const dbDir = path.join(ROOT, "db");
+  if (!fileExists(dbDir)) {
+    try {
+      fs.mkdirSync(dbDir, { recursive: true });
+      log.success(`Created db/ directory`);
+    } catch {
+      log.warn(`Could not create db/ directory. The db:push step will create it.`);
+    }
+  }
+}
+
+/**
  * Parse a .env file content into key=value lines (preserving comments + order).
  */
 function parseEnv(content) {
@@ -228,10 +258,23 @@ function main() {
     if (envVars.ENCRYPTION_KEY && envVars.ENCRYPTION_KEY.length === 64) {
       log.success(`ENCRYPTION_KEY is set (32 bytes / 64 hex chars)`);
     } else if (envVars.ENCRYPTION_KEY) {
-      log.warn(`ENCRYPTION_KEY is set but should be 64 hex chars (32 bytes). Generate one with: openssl rand -hex 32`);
+      log.warn(`ENCRYPTION_KEY is set but should be 64 hex chars (32 bytes).`);
     } else {
-      log.warn(`ENCRYPTION_KEY is empty. Generate one with: openssl rand -hex 32`);
+      log.warn(`ENCRYPTION_KEY is empty.`);
     }
+  }
+
+  // ── Step 4: Create database schema ─────────────────────────
+  log.step("Step 4: Initialize database");
+
+  ensureDbDir();
+
+  const dbPushed = runDbPush(manager);
+  if (dbPushed) {
+    log.success(`Database schema created successfully.`);
+  } else {
+    log.error(`Database setup failed. Please run "${c.bold(manager + " run db:push")}" manually.`);
+    hadErrors = true;
   }
 
   // ── Summary & next steps ───────────────────────────────────
@@ -245,16 +288,14 @@ function main() {
   log.success(`${c.bold("Setup complete!")}\n`);
 
   console.log(`${c.bold("Next steps:")}\n`);
-  console.log(`  ${c.cyan("1.")} Review your ${c.bold(".env")} file and fill in any API keys you need:`);
-  console.log(`     ${c.gray("cat .env")}\n`);
-  console.log(`  ${c.cyan("2.")} Push the database schema:`);
-  console.log(`     ${c.gray(`${manager} run db:push`)}\n`);
-  console.log(`  ${c.cyan("3.")} Start the development server:`);
+  console.log(`  ${c.cyan("1.")} (Optional) Add your API keys in the ${c.bold(".env")} file, or skip this`);
+  console.log(`     and configure them later via the in-app Settings dialog.\n`);
+  console.log(`  ${c.cyan("2.")} Start the development server:`);
   console.log(`     ${c.gray(`${manager} run dev`)}\n`);
-  console.log(`  ${c.cyan("4.")} Open ${c.bold("http://localhost:3000")} in your browser.\n`);
+  console.log(`  ${c.cyan("3.")} Open ${c.bold("http://localhost:3000")} in your browser.\n`);
 
-  console.log(`${c.gray("Tip: API keys can also be configured via the in-app Settings dialog.")}`);
-  console.log(`${c.gray("     A free demo model (GLM-4.6) works without any keys.")}\n`);
+  console.log(`${c.gray("Tip: A free demo model (GLM-4.6) works without any API keys.")}`);
+  console.log(`${c.gray("     The database was automatically created by this setup script.")}\n`);
 }
 
 main();

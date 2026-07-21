@@ -358,3 +358,45 @@ Stage Summary:
 - **setup.js automation shipped**: one command (`node setup.js`) sets up the entire environment — copies .env, generates encryption key, installs deps, verifies config, prints next steps.
 - **README rewritten**: professional, scannable, developer-friendly with tech stack grid, setup.js quickstart, architecture notes, and explicit "Model IDs managed automatically" mention.
 - `.env.example` template created with all required + optional variables documented.
+
+---
+
+Task ID: 8
+Agent: main (Z.ai Code)
+Task: Fix stop button not working; fix model/API errors after unzipping on Windows; add Windows-based architecture support.
+
+Work Log:
+- **Bug fix: Stop button not working.**
+  - Root cause: `stopGeneration()` in `use-project-workspace.ts` only sent the POST /stop request but didn't update the UI state or close the EventSource. The UI kept showing "running" and the generation log kept streaming because the SSE connection was still open.
+  - Fix: rewrote `stopGeneration()` to:
+    1. Optimistically set `isRunning: false` + step "Stopping…" immediately
+    2. Close the EventSource (stops receiving SSE events)
+    3. Send the POST /stop request to the server (aborts the server-side job)
+    4. Set step "Stopped" + reconcile files/messages/project from the server (authoritative final state)
+  - Verified with agent-browser: started a Tip Calculator generation → clicked Stop → UI immediately switched from "Stop" to "Retry" + "Generate" → generation halted → server logged `POST /stop 200`.
+- **Bug fix: model/API errors after downloading + unzipping on Windows.**
+  - Root cause: `.env` is gitignored (not in the zip) but `db/custom.db` was NOT gitignored (was in the zip). When the user ran `setup.js` on a fresh copy, a NEW `ENCRYPTION_KEY` was generated. The old database had API keys encrypted with the OLD key → decryption failed → all model/API calls failed.
+  - Fix: added `/db/*.db` and `/db/*.db-journal` to `.gitignore` so the database is NOT included in downloads. Each environment gets a fresh database via `setup.js`. Created `db/.gitkeep` so the directory exists.
+  - Also updated `setup.js` to automatically run `db:push` (Step 4: Initialize database) — so users don't need to manually run it. Added `ensureDbDir()` helper that creates the `db/` directory if it doesn't exist.
+- **Windows architecture support.**
+  - The codebase was already cross-platform (Node.js `path.join()`, no shell-specific commands), but the docs assumed Unix.
+  - Updated README Quick Start with:
+    - Cross-platform step-by-step (Windows/macOS/Linux)
+    - "Downloaded as ZIP?" callout box with 4 simple steps
+    - Windows-Specific Notes table (Terminal, Package manager, Paths, Database, Line endings, Encryption key)
+    - Removed the `nano .env` and `bun run db:push` manual steps (setup.js handles them now)
+  - Updated "What setup.js Does" table to include the new Step 6 (database initialization).
+  - Added a comprehensive **Troubleshooting** section covering:
+    - "Models and APIs giving errors" after unzipping (ENCRYPTION_KEY mismatch — with 2 fix options)
+    - Stop button not working (fixed in latest version)
+    - Generation exits immediately (< 1 second)
+    - Port 3000 already in use (with Windows + macOS/Linux commands)
+    - Database errors on Windows
+- Lint clean (0 errors, 0 warnings).
+- Verified setup.js end-to-end: deleted .env + db/custom.db → ran `node setup.js` → it created .env, generated ENCRYPTION_KEY, installed deps, created db dir, ran db:push → "Setup complete!" with simplified next steps.
+
+Stage Summary:
+- **Stop button fixed**: now immediately updates UI, closes EventSource, cancels server job, and reconciles final state.
+- **Model/API errors fixed**: database is now gitignored (not in downloads). `setup.js` auto-creates a fresh database via `db:push`. No more ENCRYPTION_KEY mismatch.
+- **Windows support**: setup.js is fully cross-platform (Node stdlib only, no Unix commands). README has Windows-specific instructions, notes table, and troubleshooting. `setup.js` now handles everything (env + key + deps + database) in one command.
+- **Troubleshooting docs**: comprehensive section for all common issues (encryption key mismatch, stop button, generation failures, port conflicts, database errors).

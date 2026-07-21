@@ -201,8 +201,35 @@ export function useProjectWorkspace(projectId: string | null) {
   // --- Stop generation ---
   const stopGeneration = useCallback(async () => {
     if (!projectId) return;
+    const store = getProjectStore(projectId);
+
+    // Optimistically update the UI to show "stopped" immediately.
+    store.getState().setLive({ isRunning: false, step: "Stopping…" });
+
+    // Close the EventStream so we stop receiving events.
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
     try {
       await fetch(`/api/projects/${projectId}/stop`, { method: "POST" });
+    } catch {
+      /* ignore */
+    }
+
+    // Update UI to final stopped state + reconcile files from server.
+    store.getState().setLive({ step: "Stopped", isRunning: false });
+    try {
+      const res = await fetch(`/api/projects/${projectId}`);
+      if (res.ok) {
+        const d = await res.json();
+        if (store.getState().projectId === projectId) {
+          store.getState().reconcileFiles(d.files);
+          store.getState().setMessages(d.messages);
+          store.getState().setProject(d.project);
+        }
+      }
     } catch {
       /* ignore */
     }
