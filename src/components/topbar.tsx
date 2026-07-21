@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Plus, Settings, Sparkles, Sun, Moon, Search, PanelLeft, Download } from "lucide-react";
+import { Plus, Settings, Sparkles, Sun, Moon, Search, PanelLeft, Download, Rocket } from "lucide-react";
 import { useAppStore } from "@/store/app-store";
 import { useTheme } from "next-themes";
 import { ModelSelector } from "@/components/model-selector";
@@ -12,6 +12,7 @@ import { getProjectStore } from "@/store/project-stores";
 export function TopBar() {
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen);
+  const setDeployOpen = useAppStore((s) => s.setDeployOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const projects = useAppStore((s) => s.projects);
   const activeProjectId = useAppStore((s) => s.activeProjectId);
@@ -109,6 +110,20 @@ export function TopBar() {
           <Search className="h-3.5 w-3.5" />
           <kbd className="rounded bg-muted px-1 py-0.5 font-mono text-[9px]">⌘K</kbd>
         </Button>
+
+        {/* Deploy */}
+        {activeProject && (
+          <Button
+            variant="default"
+            size="sm"
+            className="gap-1.5 bg-gradient-to-r from-primary to-primary/80 shadow-sm"
+            onClick={() => setDeployOpen(true)}
+            title="Deploy online"
+          >
+            <Rocket className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Deploy</span>
+          </Button>
+        )}
 
         {/* Export */}
         {activeProject && (

@@ -42,8 +42,16 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
+  Keyboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface FetchedModel {
+  id: string;
+  label?: string;
+  ownedBy?: string;
+  contextWindow?: string;
+}
 
 export function SettingsDialog() {
   const open = useAppStore((s) => s.settingsOpen);
@@ -62,19 +70,21 @@ export function SettingsDialog() {
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
 
   // Auto-fetched models from the provider's /models endpoint.
-  interface FetchedModel {
-    id: string;
-    label?: string;
-    ownedBy?: string;
-    contextWindow?: string;
-  }
   const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  const [manualModelEntry, setManualModelEntry] = useState(false);
 
   const { toast } = useToast();
 
   const providerDef = PROVIDERS.find((p) => p.id === provider)!;
+
+  // The list of models shown in the dropdown: fetched models take priority,
+  // then preset models. Empty when neither is available (→ manual input).
+  const availableModels: FetchedModel[] =
+    fetchedModels.length > 0
+      ? fetchedModels
+      : providerDef.models.map((m) => ({ id: m.id, label: m.label, contextWindow: m.contextWindow }));
 
   // Reset model + baseURL when provider changes.
   useEffect(() => {
@@ -83,6 +93,7 @@ export function SettingsDialog() {
     setTestResult(null);
     setFetchedModels([]);
     setModelsError(null);
+    setManualModelEntry(false);
   }, [provider, providerDef]);
 
   // Determine whether we have enough info to auto-fetch models.
@@ -292,45 +303,82 @@ export function SettingsDialog() {
                 )}
               </Label>
 
-              {/* Fetched models take priority; fall back to presets; fall back to manual input. */}
-              {fetchedModels.length > 0 ? (
-                <Select value={model} onValueChange={setModel}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select a model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {fetchedModels.map((m) => (
-                      <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
-                        <span className="flex items-center gap-2">
-                          <span>{m.label || m.id}</span>
-                          {m.contextWindow && (
-                            <span className="text-[9px] text-muted-foreground">{m.contextWindow}</span>
-                          )}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : providerDef.models.length > 0 ? (
-                <Select value={model} onValueChange={setModel}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {providerDef.models.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        {m.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* Model picker.
+                  Priority: fetched models > preset models > manual input.
+                  A "Type manually" toggle is always available so the user can
+                  enter an arbitrary model id even when presets exist. */}
+              {manualModelEntry ? (
+                <div className="flex gap-1.5">
+                  <Input
+                    autoFocus
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder="e.g. llama-3.1-70b-instruct"
+                    className="h-9 font-mono text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 shrink-0"
+                    onClick={() => setManualModelEntry(false)}
+                  >
+                    List
+                  </Button>
+                </div>
+              ) : availableModels.length > 0 ? (
+                <div className="flex gap-1.5">
+                  <Select value={model} onValueChange={setModel}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableModels.map((m) => (
+                        <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
+                          <span className="flex items-center gap-2">
+                            <span>{m.label || m.id}</span>
+                            {m.contextWindow && (
+                              <span className="text-[9px] text-muted-foreground">{m.contextWindow}</span>
+                            )}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 shrink-0 gap-1 text-xs"
+                    onClick={() => {
+                      setManualModelEntry(true);
+                      setModel("");
+                    }}
+                    title="Type a model id manually"
+                  >
+                    <Keyboard className="h-3 w-3" />
+                  </Button>
+                </div>
               ) : (
-                <Input
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder="e.g. llama-3.1-70b"
-                  className="h-9"
-                />
+                <div className="flex gap-1.5">
+                  <Input
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder="e.g. llama-3.1-70b-instruct"
+                    className="h-9 font-mono text-xs"
+                  />
+                  {availableModels.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 shrink-0"
+                      onClick={() => setManualModelEntry(false)}
+                    >
+                      List
+                    </Button>
+                  )}
+                </div>
               )}
 
               {/* Status line under the model picker */}

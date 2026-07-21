@@ -35,6 +35,8 @@ interface AppState {
   setSidebarCollapsed: (b: boolean) => void;
   commandPaletteOpen: boolean;
   setCommandPaletteOpen: (b: boolean) => void;
+  deployOpen: boolean;
+  setDeployOpen: (b: boolean) => void;
 
   // --- Pending prompt (welcome-screen → new-project handoff) ---
   // When a user picks an example from the welcome screen, we create a project,
@@ -83,6 +85,8 @@ export const useAppStore = create<AppState>((set) => ({
   setSidebarCollapsed: (b) => set({ sidebarCollapsed: b }),
   commandPaletteOpen: false,
   setCommandPaletteOpen: (b) => set({ commandPaletteOpen: b }),
+  deployOpen: false,
+  setDeployOpen: (b) => set({ deployOpen: b }),
 
   pendingPrompt: null,
   setPendingPrompt: (p) => set({ pendingPrompt: p }),

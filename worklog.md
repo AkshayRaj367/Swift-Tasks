@@ -183,3 +183,41 @@ Stage Summary:
 Unresolved / next-phase:
 - The model-fetch uses the raw API key the user is currently typing (not yet saved). If the key is invalid, the /models endpoint may still return models for some providers (OpenRouter's list is public), but the key won't actually work for generation. The existing "Test" button validates the key+model combo separately.
 - Consider caching fetched models per (provider, baseURL) to avoid re-fetching on every dialog open.
+
+---
+
+Task ID: 4
+Agent: main (Z.ai Code)
+Task: Fix bug where there's no input to type a model id in Settings; add a one-click Deploy feature to put generated projects online.
+
+Work Log:
+- **Bug fix: no model id input in Settings.**
+  - Root cause: after adding Groq model presets to the `custom` provider (round 2), `providerDef.models.length > 0` became true, so the model picker always showed a Select dropdown and never the manual Input — even though the status text said "you can still type a model id manually."
+  - Also found a **temporal dead zone crash**: `availableModels` (a computed value) referenced `providerDef` before `providerDef` was declared, causing `ReferenceError: Cannot access 'providerDef' before initialization` when opening the Settings dialog. This was the actual reason the dialog crashed on open.
+  - Fix: redesigned the model picker with a **manual entry toggle**. A keyboard-icon button next to the dropdown switches to a text Input where the user can type any model id. A "List" button switches back. When no models are available (empty presets + no fetch), the Input shows by default. Moved `providerDef` declaration before `availableModels` to fix the TDZ crash.
+- **New feature: one-click Deploy.**
+  - New Prisma model `Deployment` (id, projectId, target, url, siteName, status, error, createdAt) — tracks every deploy. Pushed to DB.
+  - New API routes:
+    - `GET/POST /api/projects/[id]/deploy` — list + record deploys.
+    - `POST /api/projects/[id]/deploy/netlify` — zips the project's files with JSZip and uploads to Netlify's `POST https://api.netlify.com/api/v1/sites` with the user's token. Returns the live `*.netlify.app` URL. Handles 401 (bad token) and 422 (name taken) with clear messages. Records the deploy in the DB.
+  - New `DeployDialog` component (`src/components/deploy-dialog.tsx`) with 3 tabs:
+    1. **Netlify** — paste a Netlify personal access token (saved to localStorage for reuse), optional site name, one "Deploy to Netlify" button. Opens the live URL in a new tab on success. Token is stored client-side only and sent directly to Netlify.
+    2. **Download ZIP** — downloads the project as a ZIP + shows step-by-step deploy guides for Netlify Drop, Vercel, Cloudflare Pages, Surge.sh, and GitHub Pages with direct links.
+    3. **Copy HTML** — copies a self-contained HTML document (all CSS/JS inlined) to the clipboard for pasting anywhere.
+    - Shows a **deploy history** list (past deploys with target, status badge, live URL, copy-URL + open-URL buttons).
+  - Added a prominent gradient **"Deploy"** button (Rocket icon) to the topbar, visible only when a project is active.
+  - Added `deployOpen`/`setDeployOpen` to the app store; wired `DeployDialog` into `AppShell`.
+- Lint clean (0 errors, 0 warnings).
+- Restarted dev server; verified with agent-browser:
+  - **Model id input fix**: opened Settings → clicked the keyboard "Type a model id manually" button → text input appeared with placeholder "e.g. llama-3.1-70b-instruct" → typed "my-custom-model-id" → value saved. "List" button switches back to dropdown.
+  - **Deploy dialog**: generated a Tip Calculator → clicked the new "Deploy" button in the topbar → dialog opened with 3 tabs (Netlify / Download ZIP / Copy HTML), "1 files ready to deploy", Netlify token input + "Get a free token" link, Download ZIP tab with 5 deploy guides, Copy HTML tab with standalone HTML copy. No console errors.
+
+Stage Summary:
+- **Model id input bug fixed**: users can now type any model id manually via a keyboard-icon toggle button next to the model dropdown, even when preset models exist. Also fixed a TDZ crash that prevented the Settings dialog from opening.
+- **Deploy feature shipped**: one-click deploy to Netlify (live URL in seconds), plus Download ZIP with guides for 5 hosts, plus Copy standalone HTML. Deploy history tracked in DB with live URLs.
+- Browser-verified: Settings dialog opens, manual model entry works, Deploy dialog renders all 3 tabs, no errors.
+
+Unresolved / next-phase:
+- Netlify deploy requires the user to paste a personal access token (free at netlify.com). Consider adding a "Deploy to Vercel" option using Vercel's API for users who prefer Vercel.
+- Consider adding a "Deploy to Cloudflare Pages" direct API integration (currently only guide).
+- The Netlify token is stored in localStorage (client-side). For persistence across devices, could store it encrypted server-side like the LLM API keys.

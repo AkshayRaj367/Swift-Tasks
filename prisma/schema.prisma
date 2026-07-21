@@ -43,6 +43,7 @@ model Project {
   files       ProjectFile[]
   messages    ProjectMessage[]
   jobs        GenerationJob[]
+  deployments Deployment[]
 
   @@index([userId])
 }
@@ -126,3 +127,22 @@ model ApiKeyConfig {
   @@unique([userId, label])
   @@index([userId])
 }
+
+/// Records each deployment of a project to an external host.
+/// Tracks the target (netlify | surge | cloudflare | manual), the live URL,
+/// and the deploy token label (never the token itself).
+model Deployment {
+  id          String   @id @default(cuid())
+  projectId   String
+  target      String   /// netlify | surge | cloudflare | manual
+  url         String   /// live URL after deploy
+  siteName    String?  /// site/subdomain name
+  status      String   @default("deploying") /// deploying | live | failed
+  error       String?
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
