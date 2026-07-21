@@ -290,12 +290,55 @@ function main() {
   console.log(`${c.bold("Next steps:")}\n`);
   console.log(`  ${c.cyan("1.")} (Optional) Add your API keys in the ${c.bold(".env")} file, or skip this`);
   console.log(`     and configure them later via the in-app Settings dialog.\n`);
-  console.log(`  ${c.cyan("2.")} Start the development server:`);
+  console.log(`  ${c.cyan("2.")} Start the development server (this opens the app):`);
   console.log(`     ${c.gray(`${manager} run dev`)}\n`);
-  console.log(`  ${c.cyan("3.")} Open ${c.bold("http://localhost:3000")} in your browser.\n`);
+  console.log(`  ${c.cyan("3.")} Wait for "✓ Ready" in the terminal, then open:`);
+  console.log(`     ${c.bold("http://localhost:3000")}\n`);
 
   console.log(`${c.gray("Tip: A free demo model (GLM-4.6) works without any API keys.")}`);
-  console.log(`${c.gray("     The database was automatically created by this setup script.")}\n`);
+  console.log(`${c.gray("     The database was automatically created by this setup script.")}`);
+  console.log(`${c.gray("     View the database with: " + manager + " run db:studio")}\n`);
+
+  // ── Offer to auto-start the dev server ─────────────────────
+  if (process.argv.includes("--start") || process.argv.includes("-s")) {
+    startDevServer(manager);
+  } else {
+    offerAutoStart(manager);
+  }
 }
 
-main();
+/**
+ * Offer to auto-start the dev server if the user confirms.
+ */
+function offerAutoStart(manager) {
+  // In non-interactive environments, just print instructions.
+  if (!process.stdin.isTTY) return;
+
+  process.stdout.write(`${c.cyan("?")} Start the dev server now? ${c.gray("[Y/n]")} `);
+  process.stdin.setEncoding("utf-8");
+  process.stdin.resume();
+  process.stdin.once("data", (answer) => {
+    const a = answer.trim().toLowerCase();
+    if (a === "" || a === "y" || a === "yes") {
+      startDevServer(manager);
+    } else {
+      console.log(`\n${c.gray("To start later, run: " + manager + " run dev")}\n`);
+      process.exit(0);
+    }
+  });
+}
+
+/**
+ * Start the dev server (inherits stdio so output streams to the terminal).
+ */
+function startDevServer(manager) {
+  console.log(`\n${c.bold(c.blue("▸ Starting development server…"))}\n`);
+  const cmd = `${manager} run dev`;
+  try {
+    // inherit stdio so the user sees the "✓ Ready" output and can Ctrl+C.
+    execSync(cmd, { stdio: "inherit", cwd: ROOT, shell: true });
+  } catch {
+    // User pressed Ctrl+C or the server exited.
+    console.log(`\n${c.gray("Dev server stopped.")}\n`);
+  }
+}

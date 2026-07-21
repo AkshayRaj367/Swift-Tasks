@@ -400,3 +400,38 @@ Stage Summary:
 - **Model/API errors fixed**: database is now gitignored (not in downloads). `setup.js` auto-creates a fresh database via `db:push`. No more ENCRYPTION_KEY mismatch.
 - **Windows support**: setup.js is fully cross-platform (Node stdlib only, no Unix commands). README has Windows-specific instructions, notes table, and troubleshooting. `setup.js` now handles everything (env + key + deps + database) in one command.
 - **Troubleshooting docs**: comprehensive section for all common issues (encryption key mismatch, stop button, generation failures, port conflicts, database errors).
+
+---
+
+Task ID: 9
+Agent: main (Z.ai Code)
+Task: Fix ERR_CONNECTION_REFUSED after setup.js (server not auto-started); add database viewer access.
+
+Work Log:
+- **Bug fix: ERR_CONNECTION_REFUSED after setup.js.**
+  - Root cause: `setup.js` set up the environment but did NOT start the dev server. Users clicked localhost:3000 immediately after setup.js finished and got connection refused.
+  - Fix: updated `setup.js` to offer auto-starting the dev server:
+    - After setup completes, prompts "Start the dev server now? [Y/n]" (defaults to Yes)
+    - If yes (or if `--start`/`-s` flag passed), runs `bun run dev` with inherited stdio so the user sees "✓ Ready" output
+    - If no, prints clear instructions to run `bun run dev` later
+    - Non-interactive environments (no TTY) just print instructions
+  - Also fixed the `dev` npm script: removed `2>&1 | tee dev.log` (Unix-only `tee` command that fails on Windows). Now just `next dev -p 3000` — fully cross-platform.
+- **New feature: Database viewer access.**
+  - Added `db:studio` script to package.json: `prisma studio` — opens a visual database browser at localhost:5555.
+  - Verified it works: Prisma Studio launches and serves on port 5555.
+  - Added comprehensive "Database Access" section to README with 3 ways to view the database:
+    1. **Prisma Studio** (recommended) — `bun run db:studio` → browser at localhost:5555
+    2. **SQLite GUI tools** — DB Browser for SQLite, TablePlus, DBeaver, VS Code SQLite extension (with links + platform info)
+    3. **Command line** — `sqlite3 db/custom.db` with example queries
+  - Added a note that API keys are stored encrypted (ciphertext visible in DB, not plaintext).
+- **README updates:**
+  - Added "ERR_CONNECTION_REFUSED" troubleshooting section with 2 fixes (run `bun run dev` manually, or use `node setup.js --start`)
+  - Updated Scripts table to include `db:studio`, `db:reset`, and `node setup.js --start`
+  - Updated "What setup.js Does" — now mentions the auto-start dev server prompt
+- Lint clean (0 errors, 0 warnings).
+- Verified: dev server starts with cross-platform script, Prisma Studio works at localhost:5555.
+
+Stage Summary:
+- **ERR_CONNECTION_REFUSED fixed**: setup.js now offers to auto-start the dev server (or use `--start` flag). The `dev` script no longer uses Unix-only `tee`.
+- **Database access added**: `bun run db:studio` opens Prisma Studio (visual browser). README documents 3 ways to view the SQLite database.
+- Cross-platform `dev` script: removed `tee` pipe that broke on Windows.
