@@ -89,15 +89,7 @@ function runCommand(cmd) {
 }
 
 function ensureDbDir() {
-  const dbDir = path.join(ROOT, "db");
-  if (!fileExists(dbDir)) {
-    try {
-      fs.mkdirSync(dbDir, { recursive: true });
-      logSuccess("Created db/ directory");
-    } catch {
-      logWarn("Could not create db/ directory (db:push will create it)");
-    }
-  }
+  // Not needed for Neon Postgres, but we keep the stub to avoid breaking anything
 }
 
 // ─── Main ─────────────────────────────────────────────────────
@@ -118,7 +110,7 @@ function main() {
     logWarn(".env already exists - leaving it untouched");
   } else if (!fileExists(ENV_EXAMPLE)) {
     logWarn("No .env.example found - creating minimal .env");
-    fs.writeFileSync(ENV_FILE, 'DATABASE_URL="file:./db/custom.db"\nENCRYPTION_KEY=""\n', "utf-8");
+    fs.writeFileSync(ENV_FILE, 'DATABASE_URL="postgresql://user:password@ep-xxx.region.aws.neon.tech/dbname?sslmode=require"\nENCRYPTION_KEY=""\n', "utf-8");
     logSuccess("Created minimal .env file");
   } else {
     let content = fs.readFileSync(ENV_EXAMPLE, "utf-8");
@@ -161,6 +153,9 @@ function main() {
 
     if (dbMatch && dbMatch[1]) {
       logSuccess("DATABASE_URL is set: " + c.dim(dbMatch[1]));
+      if (!dbMatch[1].startsWith("postgresql://")) {
+        logWarn("DATABASE_URL does not start with postgresql://. Please set up Neon Postgres!");
+      }
     } else {
       logWarn("DATABASE_URL not set (will use default)");
     }

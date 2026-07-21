@@ -37,9 +37,10 @@ yarn-error.log*
 # NOTE: .env.example is NOT ignored — it's the template for setup.js
 !.env.example
 
-# database (local SQLite — each environment gets a fresh one)
-/db/*.db
-/db/*.db-journal
+# database
+# SQLite has been migrated to Neon Postgres.
+/prisma/db/
+.env.backup
 
 # vercel
 .vercel
