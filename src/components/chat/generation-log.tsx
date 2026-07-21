@@ -133,10 +133,10 @@ export function GenerationLog({
       {live.completedFiles.length > 0 && (
         <div className="border-b">
           <div className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            Files written ({live.completedFiles.length})
+            Files written ({new Set(live.completedFiles).size})
           </div>
           <div className="flex flex-wrap gap-1 px-3 pb-2">
-            {live.completedFiles.map((p) => (
+            {Array.from(new Set(live.completedFiles)).map((p) => (
               <motion.div
                 key={p}
                 initial={{ opacity: 0, scale: 0.8 }}

@@ -40,7 +40,18 @@ function ModelSelectorInner({ projectId }: { projectId: string }) {
   async function applyChange(p: Provider, m: string) {
     if (!project) return;
     const providerDef = PROVIDERS.find((x) => x.id === p);
-    const baseURL = providerDef?.defaultBaseURL;
+    // For built-in providers, use the default base URL. For custom, preserve
+    // any existing baseURL on the project config, or look it up from the
+    // user's saved key for that provider.
+    let baseURL = providerDef?.defaultBaseURL;
+    if (p === "custom") {
+      baseURL = config?.baseURL;
+      if (!baseURL) {
+        // Try to find a saved key for the custom provider with a baseURL.
+        const savedKey = apiKeys.find((k) => k.provider === "custom" && k.baseURL);
+        if (savedKey?.baseURL) baseURL = savedKey.baseURL;
+      }
+    }
     updateModelConfig({ provider: p, model: m, baseURL });
 
     // Persist to server (per-project override).

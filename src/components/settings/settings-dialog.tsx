@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/store/app-store";
-import { PROVIDERS } from "@/lib/constants";
+import { PROVIDERS, CUSTOM_BASE_URL_PRESETS } from "@/lib/constants";
 import type { ApiKeyConfigPublic, Provider } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -257,13 +257,43 @@ export function SettingsDialog() {
 
           {(provider === "custom" || (providerDef.defaultBaseURL && provider !== "platform")) && (
             <div className="space-y-1.5">
-              <Label className="text-xs">Base URL {provider !== "custom" && "(optional override)"}</Label>
+              <Label className="text-xs">
+                Base URL {provider !== "custom" ? "(optional override)" : provider === "custom" && !baseURL ? "(required)" : ""}
+              </Label>
               <Input
                 value={baseURL}
-                onChange={(e) => setBaseURL(e.target.value)}
+                onChange={(e) => {
+                  setBaseURL(e.target.value);
+                  setTestResult(null);
+                }}
                 placeholder={providerDef.defaultBaseURL || "https://your-host/v1"}
                 className="h-9 font-mono text-xs"
               />
+              {provider === "custom" && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {CUSTOM_BASE_URL_PRESETS.map((preset) => (
+                    <button
+                      key={preset.url}
+                      type="button"
+                      onClick={() => {
+                        setBaseURL(preset.url);
+                        setTestResult(null);
+                      }}
+                      className={`rounded border px-1.5 py-0.5 text-[10px] transition-colors hover:bg-accent ${
+                        baseURL === preset.url ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground"
+                      }`}
+                      title={preset.docs || preset.url}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {provider === "custom" && !baseURL && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                  A base URL is required for the custom provider. Pick a preset above or enter your own.
+                </p>
+              )}
             </div>
           )}
 

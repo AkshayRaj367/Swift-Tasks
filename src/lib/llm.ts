@@ -71,13 +71,26 @@ export async function* streamGeneration(opts: StreamOpts): AsyncGenerator<string
   }
 
   // openrouter / openai / custom all speak the OpenAI chat completions API.
-  const baseURL =
-    config.baseURL ||
-    (config.provider === "openrouter"
-      ? "https://openrouter.ai/api/v1"
-      : config.provider === "openai"
-        ? "https://api.openai.com/v1"
-        : undefined);
+  // IMPORTANT: @ai-sdk/openai v4 defaults to the Responses API (/v1/responses)
+  // for known OpenAI model ids. That endpoint is (a) region-blocked in some
+  // geographies and (b) NOT supported by most OpenAI-compatible third-party
+  // endpoints (Groq, OpenRouter, vLLM, LM Studio, Ollama, …). We therefore
+  // FORCE the Chat Completions API via openai.chat() for all of these.
+  let baseURL: string | undefined;
+  if (config.provider === "openrouter") {
+    baseURL = config.baseURL || "https://openrouter.ai/api/v1";
+  } else if (config.provider === "openai") {
+    baseURL = config.baseURL || "https://api.openai.com/v1";
+  } else {
+    // custom — a base URL is MANDATORY, otherwise we'd silently hit OpenAI.
+    baseURL = config.baseURL;
+    if (!baseURL) {
+      throw makeLLMError(
+        `Custom provider requires a Base URL (e.g. https://api.groq.com/openai/v1). Add one in Settings, or pick a different provider.`,
+        "NO_BASE_URL"
+      );
+    }
+  }
 
   const openai = createOpenAI({
     apiKey,
@@ -89,8 +102,9 @@ export async function* streamGeneration(opts: StreamOpts): AsyncGenerator<string
         : undefined,
   });
 
+  // Force Chat Completions API — see comment above.
   const result = streamText({
-    model: openai(config.model),
+    model: openai.chat(config.model),
     system,
     messages,
     temperature: config.temperature ?? 0.7,
@@ -182,9 +196,23 @@ async function* streamPlatform(
 }
 
 function normalizeAIError(err: unknown, provider: string): LLMError {
-  const e = err as { name?: string; message?: string; status?: number; responseStatus?: number };
+  const e = err as { name?: string; message?: string; status?: number; responseStatus?: number; responseBody?: string };
   const msg = e?.message || String(err);
   const status = e?.status || e?.responseStatus;
+  const body = e?.responseBody || "";
+
+  // Region / country not supported (common with OpenAI Responses API from
+  // blocked geographies, or with providers that geo-fence).
+  if (
+    status === 403 ||
+    /forbidden|unsupported_country|region.*not.*supported|territory/i.test(msg + " " + body)
+  ) {
+    return makeLLMError(
+      `${provider} blocked this request (HTTP 403). This is usually a geo-restriction on the provider's endpoint. If you're using OpenAI directly, try OpenRouter or the "platform" demo model instead. (${msg})`,
+      "REGION_BLOCKED",
+      403
+    );
+  }
   if (status === 401 || /401|unauthor|invalid.*key|incorrect.*api/i.test(msg)) {
     return makeLLMError(
       `Authentication failed for ${provider}. Check your API key. (${msg})`,

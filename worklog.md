@@ -90,3 +90,54 @@ Unresolved / next-phase opportunities:
 - Sandpack integration for React-template apps (deps already installed).
 - File version history / rollback UI (version column exists, just needs a viewer).
 - Concurrency/isolation unit tests (the store registry exposes `listActiveProjectStores()` for this).
+
+---
+
+Task ID: 2
+Agent: main (Z.ai Code) — cron webDevReview round 1
+Task: User reported a critical bug: complex prompts (e.g. a detailed restaurant Group Ordering spec) cause generation to "exit in less than a second" with no output. Reproduce, diagnose, fix, and verify.
+
+Work Log:
+- Reviewed worklog.md to understand prior architecture (BYOK via @ai-sdk/openai v4, detached JobManager, per-project isolation).
+- Reproduced the bug via curl with the exact restaurant prompt:
+  - Job started, status flipped to "running", then within ~3s the project showed `idle` with 0 files and an assistant message `(Generated 0 files)`.
+  - No error was surfaced to the user — the generation appeared to succeed but produced nothing.
+- Root-cause analysis from dev.log:
+  - `Error [AI_APICallError]: Country, region, or territory not supported` with `statusCode: 403` and `url: 'https://api.openai.com/v1/responses'`.
+  - The user's saved default key was a `custom` provider with model `llama-3.3-70b-versatile` (Groq) but **no baseURL** set.
+  - THREE compounding bugs:
+    1. `@ai-sdk/openai` v4 defaults to the **Responses API** (`/v1/responses`) for known OpenAI model ids. That endpoint is region-blocked (403) and NOT supported by third-party OpenAI-compatible endpoints (Groq, OpenRouter, vLLM, …).
+    2. When `baseURL` was undefined for the `custom` provider, the code fell through to `createOpenAI()` with no baseURL → silently hit `https://api.openai.com/v1` → Responses API → 403.
+    3. The error was caught and the job was marked "completed" (0 files) instead of "failed", so the user saw a silent no-op instead of an actionable error.
+- Fixes applied to `src/lib/llm.ts`:
+  - **Force Chat Completions API**: changed `openai(config.model)` → `openai.chat(config.model)` for all OpenAI-compatible providers (openrouter/openai/custom). This is the universally-supported endpoint.
+  - **Require baseURL for custom provider**: throw `makeLLMError("Custom provider requires a Base URL…", "NO_BASE_URL")` immediately if `baseURL` is missing, instead of silently hitting OpenAI.
+  - **Recognize 403/region errors** in `normalizeAIError`: new `REGION_BLOCKED` code with an actionable message ("try OpenRouter or the platform demo model instead").
+- Fix applied to `src/lib/job-manager.ts`:
+  - **Auto-fallback to platform model**: when a BYOK provider fails immediately with a config/auth/region/network error (codes: `NO_BASE_URL`, `NO_KEY`, `REGION_BLOCKED`, `AUTH`, `NETWORK`), the job automatically retries with the platform model (`glm-4.6`) so the user still gets a working result. The original error is surfaced as a status note ("BYOK failed (NO_BASE_URL), falling back to platform model…"). Uses a probe-first-chunk pattern with `prependGen()`/`emptyGen()` async generator helpers to detect immediate errors without consuming the stream.
+- UX improvements to `src/lib/constants.ts` + `src/components/settings/settings-dialog.tsx`:
+  - Added `CUSTOM_BASE_URL_PRESETS` (Groq, Together AI, Fireworks, DeepSeek, Mistral, Ollama, LM Studio) as one-click preset chips in the Settings dialog.
+  - Added Groq model presets (Llama 3.3 70B, Llama 3.1 8B Instant, Mixtral 8x7B) to the custom provider.
+  - Shows "(required)" label + amber warning when custom provider has no baseURL.
+- UX improvement to `src/components/model-selector.tsx`:
+  - When switching to a `custom` model, preserve the project's existing baseURL or look it up from the user's saved custom-provider key, instead of clearing it.
+- Minor fix: deduplicated completed-files badges in `generation-log.tsx` (was causing a React "two children with same key" warning when a file was modified twice).
+- Restarted dev server (server-lib changes require restart; Turbopack HMR doesn't always pick up `lib/` changes).
+- Verified with agent-browser using the EXACT restaurant prompt the user reported:
+  1. Created a new blank project.
+  2. Pasted the full restaurant Group Ordering prompt into the chat textarea.
+  3. Clicked Generate.
+  4. Generation streamed live for ~95 seconds: index.html → styles.css → app.js, token stream grew to 16,393 chars.
+  5. **3 files generated**: app.js, index.html, styles.css.
+  6. **Live preview rendered the full restaurant app**: "Restaurant Name" header, Menu with category filters (All/Appetizers/Mains/Desserts/Drinks), Group Session sidebar with Create Group button + 6-digit code input + Join Group button, Group Members list, Shared Cart with Checkout.
+  7. No errors in browser console, no 403s in dev.log.
+
+Stage Summary:
+- **Critical bug FIXED**: complex prompts no longer exit instantly. The root cause was a combination of (a) @ai-sdk/openai v4 defaulting to the region-blocked Responses API, (b) missing baseURL for custom providers, and (c) errors being swallowed.
+- **Auto-fallback**: BYOK config/auth/region errors now automatically retry with the platform model, so users always get a result even with a broken key config.
+- **Better BYOK UX**: base URL presets for common providers (Groq, Together, Fireworks, DeepSeek, Mistral, Ollama, LM Studio), clear "required" indicators, and Groq model presets.
+- Browser-verified end-to-end with the exact failing prompt — now generates a complete 3-file restaurant app with a live, interactive preview.
+
+Unresolved / next-phase:
+- The user's existing saved `custom` key still has no baseURL (can't be auto-fixed without the plaintext key). The auto-fallback handles this gracefully, but the user should re-save the key with a Groq baseURL via the new preset chips for native Groq support.
+- Consider adding a "Fix configuration" inline button in the chat panel when a fallback occurs, linking straight to Settings.

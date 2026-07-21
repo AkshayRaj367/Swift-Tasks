@@ -69,11 +69,27 @@ export const PROVIDERS: ProviderDef[] = [
   {
     id: "custom",
     label: "Custom (OpenAI-compatible)",
-    description: "Any endpoint exposing /v1/chat/completions (vLLM, LM Studio, Ollama, …).",
+    description: "Any endpoint exposing /v1/chat/completions (Groq, vLLM, LM Studio, Ollama, …).",
     docsUrl: "",
     byok: true,
-    models: [],
+    models: [
+      { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B (Groq)" },
+      { id: "llama-3.1-8b-instant", label: "Llama 3.1 8B Instant (Groq)" },
+      { id: "mixtral-8x7b-32768", label: "Mixtral 8x7B (Groq)" },
+      { id: "custom-model", label: "Enter model id manually" },
+    ],
   },
+];
+
+/** Common OpenAI-compatible base URLs for the Custom provider. */
+export const CUSTOM_BASE_URL_PRESETS: { label: string; url: string; docs?: string }[] = [
+  { label: "Groq", url: "https://api.groq.com/openai/v1", docs: "https://console.groq.com/keys" },
+  { label: "Together AI", url: "https://api.together.xyz/v1", docs: "https://api.together.xyz/settings/api-keys" },
+  { label: "Fireworks", url: "https://api.fireworks.ai/inference/v1", docs: "https://fireworks.ai/account/api-keys" },
+  { label: "DeepSeek", url: "https://api.deepseek.com/v1", docs: "https://platform.deepseek.com/api_keys" },
+  { label: "Mistral", url: "https://api.mistral.ai/v1", docs: "https://console.mistral.ai/api-keys" },
+  { label: "Ollama (local)", url: "http://localhost:11434/v1" },
+  { label: "LM Studio (local)", url: "http://localhost:1234/v1" },
 ];
 
 export function getProvider(id: Provider): ProviderDef | undefined {

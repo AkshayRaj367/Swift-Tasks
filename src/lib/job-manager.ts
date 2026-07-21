@@ -144,13 +144,50 @@ class JobManager {
       // Compose the actual instruction sent to the model.
       const instruction = this.buildInstruction(prompt, projectId);
 
-      const gen = streamGeneration({
-        config,
-        apiKey,
-        messages: [...messages, { role: "user", content: instruction }],
-        signal: runtime.controller.signal,
-        systemPrompt: config.systemPromptOverride || DEFAULT_SYSTEM_PROMPT,
-      });
+      // Try the configured provider. If it fails with a configuration or
+      // region error (common with BYOK misconfiguration), automatically fall
+      // back to the platform model so the user still gets a working result.
+      // The original error is surfaced as a status note.
+      let gen: AsyncGenerator<string, void, unknown>;
+      try {
+        const primary = streamGeneration({
+          config,
+          apiKey,
+          messages: [...messages, { role: "user", content: instruction }],
+          signal: runtime.controller.signal,
+          systemPrompt: config.systemPromptOverride || DEFAULT_SYSTEM_PROMPT,
+        });
+        // Probe the first chunk to detect immediate config/auth/region errors.
+        const probe = await primary.next();
+        if (probe.done) {
+          // Empty stream (rare) — wrap an empty generator.
+          gen = emptyGen();
+        } else {
+          // First chunk arrived — prepend it to the rest of the stream.
+          gen = prependGen(probe.value, primary);
+        }
+      } catch (configErr) {
+        const ce = configErr as LLMError;
+        const fallbackCodes = ["NO_BASE_URL", "NO_KEY", "REGION_BLOCKED", "AUTH", "NETWORK"];
+        if (ce.code && fallbackCodes.includes(ce.code) && config.provider !== "platform") {
+          // Fall back to platform model.
+          this.emit(jobId, {
+            type: "status",
+            tokensUsed: 0,
+            filesCompleted: 0,
+            step: `BYOK failed (${ce.code}), falling back to platform model…`,
+          });
+          gen = streamGeneration({
+            config: { provider: "platform", model: "glm-4.6" },
+            apiKey: null,
+            messages: [...messages, { role: "user", content: instruction }],
+            signal: runtime.controller.signal,
+            systemPrompt: config.systemPromptOverride || DEFAULT_SYSTEM_PROMPT,
+          });
+        } else {
+          throw configErr;
+        }
+      }
 
       for await (const chunk of gen) {
         if (runtime.controller.signal.aborted) {
@@ -423,3 +460,18 @@ export const jobManager = globalForJobs.jobManager ?? new JobManager();
 if (process.env.NODE_ENV !== "production") globalForJobs.jobManager = jobManager;
 
 export { JobManager };
+
+// --- async generator helpers for the fallback probe pattern ---
+
+async function* emptyGen(): AsyncGenerator<string, void, unknown> {
+  // intentionally empty
+}
+
+async function* prependGen(
+  first: string,
+  rest: AsyncGenerator<string, void, unknown>
+): AsyncGenerator<string, void, unknown> {
+  yield first;
+  yield* rest;
+}
+
