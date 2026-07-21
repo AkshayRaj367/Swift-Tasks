@@ -100,8 +100,19 @@ async function fetchModels(
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    // Provide a clear, actionable error message based on the status code.
+    let friendlyMsg: string;
+    if (res.status === 401 || res.status === 403) {
+      friendlyMsg = `Your API key is invalid or missing (HTTP ${res.status}). Check that you copied the key correctly and it hasn't expired.`;
+    } else if (res.status === 404) {
+      friendlyMsg = `The models endpoint was not found (HTTP 404). Check that the base URL is correct.`;
+    } else if (res.status === 429) {
+      friendlyMsg = `Rate limit reached (HTTP 429). Wait a moment and try again.`;
+    } else {
+      friendlyMsg = `Failed to fetch models (HTTP ${res.status})`;
+    }
     const err = new Error(
-      `Failed to fetch models (HTTP ${res.status})${text ? `: ${text.slice(0, 200)}` : ""}`
+      `${friendlyMsg}${text ? ` — ${text.slice(0, 150)}` : ""}`
     ) as Error & { status?: number };
     err.status = res.status;
     throw err;

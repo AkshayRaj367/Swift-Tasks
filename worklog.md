@@ -512,3 +512,38 @@ Work Log:
 Stage Summary:
 - **All 405 errors eliminated**: every API route now handles GET requests with a friendly info message instead of returning 405 Method Not Allowed. The VS Code terminal will no longer show 405 errors from browser prefetching or direct navigation.
 - The actual POST/PUT/DELETE functionality is unchanged — the GET handlers are purely informational.
+
+---
+
+Task ID: 12
+Agent: main (Z.ai Code)
+Task: Fix 403 "Forbidden" error misclassified as geo-restriction; verify/fix preset model names.
+
+Work Log:
+- **Root cause of misleading error**: Groq (and some other providers) return HTTP 403 "Forbidden" for **invalid API keys** — NOT for geo-restriction. But `normalizeAIError` classified ALL 403s as `REGION_BLOCKED`, showing the user "This is usually a geo-restriction" when their key was simply wrong.
+- **Fix in `src/lib/llm.ts` `normalizeAIError()`**:
+  - Split the 403 handling into two cases based on the response body content:
+    - If body contains `unsupported_country` / `region` / `territory` / `geo` → `REGION_BLOCKED` (actual geo-restriction)
+    - If body contains `Forbidden` / `Invalid API Key` / `unauthorized` without geo keywords → `AUTH` (invalid key)
+  - The `AUTH` error code triggers the auto-fallback to the platform model, so the user still gets a working generation.
+  - Updated the error message: "Authentication failed for {provider} (HTTP {status}). Your API key is invalid, expired, or missing. Double-check the key in Settings."
+- **Fixed preset model names in `src/lib/constants.ts`**:
+  - **OpenRouter**: replaced outdated `anthropic/claude-3.5-sonnet` with `anthropic/claude-sonnet-latest`; added `openai/gpt-4o-mini`, `meta-llama/llama-3.3-70b-instruct`
+  - **OpenAI**: added `gpt-4.1-mini`
+  - **Custom (Groq)**: removed deprecated `mixtral-8x7b-32768`; replaced `custom-model` placeholder with `gemma2-9b-it`; added context windows to all Groq models
+  - Updated the Custom provider description to mention auto-fetching
+- **Improved models route error messages** (`src/app/api/settings/api-keys/models/route.ts`):
+  - 401/403 → "Your API key is invalid or missing. Check that you copied the key correctly and it hasn't expired."
+  - 404 → "The models endpoint was not found. Check that the base URL is correct."
+  - 429 → "Rate limit reached. Wait a moment and try again."
+- Lint clean (0 errors, 0 warnings).
+- Verified with agent-browser:
+  - Selected Custom provider → Groq base URL preset → model dropdown shows "Llama 3.3 70B Versatile (Groq) 128K" (correct name + context window)
+  - Typed invalid key → models endpoint says "Your API key is invalid or missing (HTTP 403)" (not "geo-restriction")
+  - Clicked Test → says "Authentication failed for custom (HTTP 403). Your API key is invalid, expired, or missing." with code AUTH (triggers auto-fallback)
+  - No deprecated `mixtral-8x7b-32768` or `custom-model` placeholder in the dropdown
+
+Stage Summary:
+- **403 error correctly classified**: Groq's 403 "Forbidden" for invalid keys now shows "Your API key is invalid" instead of the misleading "geo-restriction" message. Actual geo-restrictions (with `unsupported_country` in the body) still show the region-blocked message.
+- **Model names verified and updated**: removed deprecated Groq model (`mixtral-8x7b-32768`), updated OpenRouter Claude model ID to `anthropic/claude-sonnet-latest`, added context windows to all Groq presets, added `gpt-4.1-mini` and `llama-3.3-70b-instruct`.
+- **Better error messages**: the models fetch route now gives specific, actionable messages for 401/403/404/429 instead of a generic "Failed to fetch models".

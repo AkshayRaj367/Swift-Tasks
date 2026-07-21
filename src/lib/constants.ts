@@ -33,10 +33,12 @@ export const PROVIDERS: ProviderDef[] = [
     defaultBaseURL: "https://openrouter.ai/api/v1",
     byok: true,
     models: [
-      { id: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet", contextWindow: "200K" },
+      { id: "anthropic/claude-sonnet-latest", label: "Claude Sonnet (latest)", contextWindow: "200K" },
       { id: "openai/gpt-4o", label: "GPT-4o", contextWindow: "128K" },
+      { id: "openai/gpt-4o-mini", label: "GPT-4o mini", contextWindow: "128K" },
       { id: "google/gemini-flash-1.5", label: "Gemini Flash 1.5", contextWindow: "1M" },
       { id: "meta-llama/llama-3.1-70b-instruct", label: "Llama 3.1 70B", contextWindow: "128K" },
+      { id: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B", contextWindow: "128K" },
     ],
   },
   {
@@ -50,6 +52,7 @@ export const PROVIDERS: ProviderDef[] = [
       { id: "gpt-4o", label: "GPT-4o", contextWindow: "128K" },
       { id: "gpt-4o-mini", label: "GPT-4o mini", contextWindow: "128K" },
       { id: "gpt-4.1", label: "GPT-4.1", contextWindow: "1M" },
+      { id: "gpt-4.1-mini", label: "GPT-4.1 mini", contextWindow: "1M" },
       { id: "o3-mini", label: "o3-mini", contextWindow: "200K" },
     ],
   },
@@ -69,14 +72,14 @@ export const PROVIDERS: ProviderDef[] = [
   {
     id: "custom",
     label: "Custom (OpenAI-compatible)",
-    description: "Any endpoint exposing /v1/chat/completions (Groq, vLLM, LM Studio, Ollama, …).",
+    description: "Any endpoint exposing /v1/chat/completions (Groq, Together, vLLM, Ollama, …). Model IDs are auto-fetched when you enter a key + base URL.",
     docsUrl: "",
     byok: true,
     models: [
-      { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B (Groq)" },
-      { id: "llama-3.1-8b-instant", label: "Llama 3.1 8B Instant (Groq)" },
-      { id: "mixtral-8x7b-32768", label: "Mixtral 8x7B (Groq)" },
-      { id: "custom-model", label: "Enter model id manually" },
+      // Groq models (commonly used with the Groq base URL preset)
+      { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B Versatile (Groq)", contextWindow: "128K" },
+      { id: "llama-3.1-8b-instant", label: "Llama 3.1 8B Instant (Groq)", contextWindow: "128K" },
+      { id: "gemma2-9b-it", label: "Gemma 2 9B (Groq)", contextWindow: "8K" },
     ],
   },
 ];

@@ -223,24 +223,31 @@ function normalizeAIError(err: unknown, provider: string): LLMError {
   // AI SDK v4 uses `statusCode`; older errors use `status`.
   const status = e?.status || e?.statusCode || e?.responseStatus;
   const body = e?.responseBody || "";
+  const combined = msg + " " + body;
 
-  // Region / country not supported (common with OpenAI Responses API from
-  // blocked geographies, or with providers that geo-fence).
-  if (
-    status === 403 ||
-    /forbidden|unsupported_country|region.*not.*supported|territory/i.test(msg + " " + body)
-  ) {
+  // Region / country not supported — check for specific geo-restriction indicators.
+  // NOTE: many providers (e.g. Groq) return 403 "Forbidden" for INVALID API KEYS,
+  // not just geo-restriction. We must distinguish:
+  //   - "unsupported_country" / "region" / "territory" in body → actual geo-block
+  //   - "Forbidden" / "Invalid API Key" without geo keywords → auth failure
+  if (/unsupported_country|region.*not.*supported|territory.*not.*supported|geo/i.test(combined)) {
     return makeLLMError(
-      `${provider} blocked this request (HTTP 403). This is usually a geo-restriction on the provider's endpoint. If you're using OpenAI directly, try OpenRouter or the "platform" demo model instead. (${msg})`,
+      `${provider} is not available in your region (HTTP 403). This is a geo-restriction on the provider's endpoint. Try OpenRouter or the "platform" demo model instead. (${msg})`,
       "REGION_BLOCKED",
       403
     );
   }
-  if (status === 401 || /401|unauthor|invalid.*key|incorrect.*api/i.test(msg)) {
+
+  // Auth failures — 401 OR 403 with "Forbidden"/"Invalid API Key" (Groq uses 403 for bad keys).
+  if (
+    status === 401 ||
+    status === 403 ||
+    /401|unauthor|invalid.*key|incorrect.*api|forbidden|not.*authorized/i.test(combined)
+  ) {
     return makeLLMError(
-      `Authentication failed for ${provider}. Check your API key. (${msg})`,
+      `Authentication failed for ${provider} (HTTP ${status}). Your API key is invalid, expired, or missing. Double-check the key in Settings — make sure you copied it correctly and it hasn't expired. (${msg})`,
       "AUTH",
-      401
+      status
     );
   }
   if (status === 429 || /429|rate.*limit|quota|insufficient/i.test(msg)) {
