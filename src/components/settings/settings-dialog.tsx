@@ -42,7 +42,6 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
-  Keyboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -73,14 +72,13 @@ export function SettingsDialog() {
   const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
-  const [manualModelEntry, setManualModelEntry] = useState(false);
 
   const { toast } = useToast();
 
   const providerDef = PROVIDERS.find((p) => p.id === provider)!;
 
   // The list of models shown in the dropdown: fetched models take priority,
-  // then preset models. Empty when neither is available (→ manual input).
+  // then preset models. Model IDs are managed automatically by the system.
   const availableModels: FetchedModel[] =
     fetchedModels.length > 0
       ? fetchedModels
@@ -93,7 +91,6 @@ export function SettingsDialog() {
     setTestResult(null);
     setFetchedModels([]);
     setModelsError(null);
-    setManualModelEntry(false);
   }, [provider, providerDef]);
 
   // Determine whether we have enough info to auto-fetch models.
@@ -285,9 +282,9 @@ export function SettingsDialog() {
               </Select>
             </div>
 
-            {/* Model picker — full width, no overflow.
-                The Select and the keyboard-toggle button wrap cleanly.
-                Priority: fetched > presets > manual input. */}
+            {/* Model picker — automatic. Model IDs are managed by the system.
+                Shows fetched models (from provider's /models endpoint) or
+                preset models. No manual entry needed. */}
             <div className="space-y-1.5">
               <Label className="flex items-center justify-between gap-2 text-xs">
                 <span className="shrink-0">Model</span>
@@ -309,67 +306,29 @@ export function SettingsDialog() {
                 )}
               </Label>
 
-              {manualModelEntry ? (
-                <div className="flex gap-1.5">
-                  <Input
-                    autoFocus
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    placeholder="e.g. llama-3.1-70b-instruct"
-                    className="h-9 min-w-0 flex-1 font-mono text-xs"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-9 shrink-0"
-                    onClick={() => setManualModelEntry(false)}
-                    disabled={availableModels.length === 0}
-                  >
-                    List
-                  </Button>
-                </div>
-              ) : availableModels.length > 0 ? (
-                <div className="flex gap-1.5">
-                  <Select value={model} onValueChange={setModel}>
-                    <SelectTrigger className="h-9 min-w-0 flex-1">
-                      <SelectValue placeholder="Select a model" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[300px]">
-                      {availableModels.map((m) => (
-                        <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
-                          <span className="flex items-center gap-2">
-                            <span className="truncate">{m.label || m.id}</span>
-                            {m.contextWindow && (
-                              <span className="shrink-0 text-[9px] text-muted-foreground">{m.contextWindow}</span>
-                            )}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-9 shrink-0 gap-1 text-xs"
-                    onClick={() => {
-                      setManualModelEntry(true);
-                      setModel("");
-                    }}
-                    title="Type a model id manually"
-                  >
-                    <Keyboard className="h-3 w-3" />
-                  </Button>
-                </div>
+              {availableModels.length > 0 ? (
+                <Select value={model} onValueChange={setModel}>
+                  <SelectTrigger className="h-9 w-full">
+                    <SelectValue placeholder="Select a model" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px]">
+                    {availableModels.map((m) => (
+                      <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
+                        <span className="flex items-center gap-2">
+                          <span className="truncate">{m.label || m.id}</span>
+                          {m.contextWindow && (
+                            <span className="shrink-0 text-[9px] text-muted-foreground">{m.contextWindow}</span>
+                          )}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               ) : (
-                <div className="flex gap-1.5">
-                  <Input
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    placeholder="e.g. llama-3.1-70b-instruct"
-                    className="h-9 min-w-0 flex-1 font-mono text-xs"
-                  />
+                <div className="flex h-9 items-center rounded-md border bg-muted/30 px-3 text-xs text-muted-foreground">
+                  {provider === "platform"
+                    ? "Using platform default model"
+                    : "Enter an API key to load available models"}
                 </div>
               )}
 
@@ -382,9 +341,7 @@ export function SettingsDialog() {
                       Fetching available models…
                     </span>
                   ) : modelsError ? (
-                    <span className="text-amber-600 dark:text-amber-400">
-                      {modelsError} — type a model id manually.
-                    </span>
+                    <span className="text-amber-600 dark:text-amber-400">{modelsError}</span>
                   ) : fetchedModels.length > 0 ? (
                     <span className="text-emerald-600 dark:text-emerald-400">
                       {fetchedModels.length} model{fetchedModels.length === 1 ? "" : "s"} available

@@ -310,3 +310,51 @@ Unresolved / next-phase:
 - Consider adding a "Fix configuration" inline button when auto-fallback occurs.
 - Consider adding Vercel deploy integration alongside Netlify.
 - Consider adding E2E tests for the isolation boundary.
+
+---
+
+Task ID: 7
+Agent: main (Z.ai Code)
+Task: Remove manual model ID feature; create setup.js automation script; rewrite README with tech stack grid, setup.js quickstart, and architecture notes.
+
+Work Log:
+- **Removed manual model ID entry feature completely.**
+  - Removed `manualModelEntry` state variable.
+  - Removed the keyboard-icon toggle button that switched to manual input.
+  - Removed the manual `<Input>` fallback (both the `manualModelEntry ?` branch and the `availableModels.length === 0` Input fallback).
+  - Removed the `Keyboard` icon import (no longer used).
+  - The model picker now shows ONLY a `<Select>` dropdown (fetched models or preset models). When no models are available (no key entered), it shows a static hint message ("Enter an API key to load available models" / "Using platform default model") instead of an input.
+  - Updated the comment to clarify: "Model IDs are managed automatically by the system."
+  - Updated the status line to remove the "type a model id manually" text from the error message.
+- **Created `.env.example` template** at project root with:
+  - `DATABASE_URL` (default SQLite path)
+  - `ENCRYPTION_KEY` (empty, with instructions to generate)
+  - Optional commented-out keys for OpenRouter/OpenAI/Anthropic/Netlify
+  - Clear section headers and warnings.
+- **Created `setup.js` automation script** at project root:
+  - Pure Node.js stdlib (no external dependencies).
+  - Step 1: Copies `.env.example` → `.env` (if `.env` doesn't exist), auto-generates a random 32-byte `ENCRYPTION_KEY`.
+  - Step 2: Auto-detects package manager from lockfiles (bun > yarn > pnpm > npm) or falls back to PATH detection. Runs the install command.
+  - Step 3: Verifies `DATABASE_URL` and `ENCRYPTION_KEY` are set, with colored success/warning messages.
+  - Prints a clear summary with numbered next steps (review .env → db:push → dev → open browser).
+  - Colored console output via ANSI codes (cyan info, green success, yellow warning, red error, blue steps, gray dim).
+  - Fixed initial bugs: color helpers were strings but called as functions — refactored all to function wrappers (`c.bold(s)`, `c.gray(s)`, etc.).
+  - Excluded from ESLint via `ignores: ["setup.js"]` (uses CommonJS `require()`).
+- **Rewrote README.md** with all requested sections:
+  - **Tech Stack**: structured grid table (14 rows) covering framework, runtime, language, UI, editor, LLM streaming, state management, real-time, database, job queue, encryption, preview, export/deploy.
+  - **Quick Start**: step-by-step (clone → `node setup.js` → configure .env → `db:push` → `bun run dev`) with a "What setup.js Does" table.
+  - **Feature Guide & Architecture**: ASCII flow diagram for code generation pipeline, live preview description, project isolation table, explicit "Model IDs are managed automatically" callout, one-click deploy table, secure vault description, and a full architecture diagram.
+  - **Project Structure**: updated tree including `setup.js` and `.env.example`.
+  - **Configuration**: env vars table + provider table with "Model IDs are fetched automatically" note.
+  - **API Reference**: full endpoint tables (projects, generation, files, settings, vault, deploy).
+  - **Security**: encryption, sandbox, auto-fallback sections.
+  - **Contributing**: scripts table including `node setup.js`.
+- Lint clean (0 errors, 0 warnings) after excluding `setup.js` from ESLint.
+- Verified with agent-browser: Settings dialog no longer has the keyboard toggle button or manual input — only a clean Select dropdown. No console errors.
+- Verified `setup.js` runs successfully: creates .env, generates encryption key, detects bun lockfile, runs `bun install`, verifies config, prints next steps.
+
+Stage Summary:
+- **Manual model ID feature removed**: the "Enter Model ID Manually" UI (input, toggle button, state) is completely gone. Model IDs are now exclusively managed via the auto-fetch dropdown.
+- **setup.js automation shipped**: one command (`node setup.js`) sets up the entire environment — copies .env, generates encryption key, installs deps, verifies config, prints next steps.
+- **README rewritten**: professional, scannable, developer-friendly with tech stack grid, setup.js quickstart, architecture notes, and explicit "Model IDs managed automatically" mention.
+- `.env.example` template created with all required + optional variables documented.
