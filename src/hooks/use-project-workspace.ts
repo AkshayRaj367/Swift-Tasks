@@ -18,6 +18,9 @@ import { getProjectStore } from "@/store/project-stores";
 import { useAppStore } from "@/store/app-store";
 import type { ChatMessage, ProjectFile, ProjectSummary, StreamEvent } from "@/lib/types";
 import { toast } from "@/hooks/use-toast";
+import { streamFromBrowser, findKeyIdForProvider, fetchDecryptedKey } from "@/lib/client-llm";
+import { FileStreamParser } from "@/lib/file-parser";
+import { DEFAULT_SYSTEM_PROMPT } from "@/lib/constants";
 
 interface HydrateResponse {
   project: ProjectSummary;
@@ -56,6 +59,16 @@ export function useProjectWorkspace(projectId: string | null) {
           return;
         }
         store.getState().applyStreamEvent(ev);
+
+        // Surface fallback warnings as a toast so the user knows their BYOK
+        // key was rejected and the platform model was used instead.
+        if (ev.type === "status" && ev.step.startsWith("⚠️")) {
+          toast({
+            title: "Using platform demo model",
+            description: ev.step.replace("⚠️ ", ""),
+            variant: "default",
+          });
+        }
 
         // When the job finishes, refresh files from DB (authoritative) and close.
         if (ev.type === "done") {
@@ -132,7 +145,204 @@ export function useProjectWorkspace(projectId: string | null) {
     [upsertProject, attachStream]
   );
 
-  // --- Send prompt (start generation + attach stream) ---
+  // --- Client-side generation (bypasses server → uses user's browser IP) ---
+  // This is used when the server's IP is blocked by the provider (e.g. Groq
+  // uses Cloudflare which blocks certain server IPs). The API call is made
+  // directly from the browser, so it uses the user's IP.
+  const abortRef = useRef<AbortController | null>(null);
+
+  const sendPromptClientSide = useCallback(
+    async (prompt: string): Promise<boolean> => {
+      if (!projectId) return false;
+      const store = getProjectStore(projectId);
+      const project = store.getState().project;
+      if (!project) return false;
+
+      const config = project.modelConfig;
+      if (config.provider === "platform") return false; // platform always uses server-side
+
+      // Find the saved API key for this provider.
+      const keyId = await findKeyIdForProvider(config.provider);
+      if (!keyId) return false; // no saved key → fall back to server-side
+
+      // Fetch the decrypted key.
+      const keyData = await fetchDecryptedKey(keyId);
+      if (!keyData || !keyData.key) return false;
+
+      // Use the saved key's baseURL if the project config doesn't have one.
+      const effectiveConfig = {
+        ...config,
+        baseURL: config.baseURL || keyData.baseURL || undefined,
+        model: config.model || keyData.model,
+      };
+
+      // Build conversation history.
+      const history = store.getState().messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      const instruction = `Project id: ${projectId}\n\nUser request:\n${prompt}\n\nNow write the complete, runnable app as <file> blocks per the system instructions.`;
+
+      const systemPrompt = config.systemPromptOverride || DEFAULT_SYSTEM_PROMPT;
+
+      // Set up abort controller for cancellation.
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      store.getState().setLive({
+        isRunning: true,
+        step: `Generating with ${config.provider} (browser-direct)…`,
+        tokens: "",
+        filesStreaming: {},
+        completedFiles: [],
+        tokensUsed: 0,
+        filesCompleted: 0,
+        error: null,
+        cursor: 0,
+      });
+
+      const parser = new FileStreamParser();
+      let tokensUsed = 0;
+      let filesCompleted = 0;
+      const writtenFiles: string[] = [];
+      let assistantText = "";
+
+      const result = await streamFromBrowser(
+        effectiveConfig,
+        keyData.key,
+        systemPrompt,
+        [...history, { role: "user", content: instruction }],
+        (chunk) => {
+          if (controller.signal.aborted) return;
+          tokensUsed += Math.max(1, Math.ceil(chunk.length / 4));
+          store.getState().setLive({
+            tokens: store.getState().live.tokens + chunk,
+            tokensUsed,
+          });
+
+          const { text, events } = parser.feed(chunk);
+          if (text) assistantText += text;
+          for (const ev of events) {
+            if (ev.type === "file_start") {
+              store.getState().setLive({
+                filesStreaming: { ...store.getState().live.filesStreaming, [ev.path]: "" },
+                step: `Writing ${ev.path}`,
+              });
+            } else if (ev.type === "file_content" && ev.chunk) {
+              store.getState().setLive({
+                filesStreaming: {
+                  ...store.getState().live.filesStreaming,
+                  [ev.path]: (store.getState().live.filesStreaming[ev.path] || "") + ev.chunk,
+                },
+              });
+            } else if (ev.type === "file_done" && ev.content !== undefined) {
+              // Persist the file to the server.
+              fetch(`/api/projects/${projectId}/files`, {
+                method: "PUT",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ path: ev.path, content: ev.content }),
+              }).catch(() => {});
+
+              // Update the store.
+              const existing = store.getState().files.find((f) => f.path === ev.path);
+              const newFile: ProjectFile = {
+                id: existing?.id || `live-${ev.path}`,
+                path: ev.path,
+                content: ev.content,
+                version: (existing?.version || 0) + 1,
+                lastAction: ev.action,
+                updatedAt: new Date().toISOString(),
+              };
+              const files = existing
+                ? store.getState().files.map((f) => (f.path === ev.path ? newFile : f))
+                : [...store.getState().files, newFile];
+              store.getState().setFiles(files);
+
+              filesCompleted += 1;
+              writtenFiles.push(ev.path);
+              const streaming = { ...store.getState().live.filesStreaming };
+              delete streaming[ev.path];
+              store.getState().setLive({
+                filesStreaming: streaming,
+                completedFiles: [...store.getState().live.completedFiles, ev.path],
+                filesCompleted,
+                step: `Wrote ${ev.path}`,
+              });
+            }
+          }
+        },
+        controller.signal
+      );
+
+      // Flush trailing content.
+      const flushed = parser.flush();
+      if (flushed.text) assistantText += flushed.text;
+      for (const ev of flushed.events) {
+        if (ev.type === "file_done" && ev.content !== undefined) {
+          await fetch(`/api/projects/${projectId}/files`, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ path: ev.path, content: ev.content }),
+          }).catch(() => {});
+          filesCompleted += 1;
+          writtenFiles.push(ev.path);
+        }
+      }
+
+      if (result.error) {
+        // If it's a CORS error, fall back to server-side.
+        if (/cors|network/i.test(result.error)) {
+          store.getState().setLive({ isRunning: false });
+          return false; // fall back to server-side
+        }
+        store.getState().setLive({ isRunning: false, error: result.error, step: "Error" });
+        toast({
+          title: "Generation failed",
+          description: result.error,
+          variant: "destructive",
+        });
+        return true; // handled (don't fall back)
+      }
+
+      // Persist the assistant message.
+      const trimmed = assistantText.trim();
+      await fetch(`/api/projects/${projectId}/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          role: "assistant",
+          content: trimmed || `(Generated ${filesCompleted} file${filesCompleted === 1 ? "" : "s"})`,
+          meta: JSON.stringify({ files: writtenFiles, tokensUsed }),
+          tokens: tokensUsed,
+        }),
+      }).catch(() => {});
+
+      // Reconcile from server.
+      try {
+        const res = await fetch(`/api/projects/${projectId}`);
+        if (res.ok) {
+          const d = await res.json();
+          store.getState().reconcileFiles(d.files);
+          store.getState().setMessages(d.messages);
+          store.getState().setProject(d.project);
+          upsertProject(d.project);
+        }
+      } catch {
+        /* ignore */
+      }
+
+      store.getState().setLive({
+        isRunning: false,
+        step: "Done",
+        tokensUsed,
+        filesCompleted,
+      });
+      return true; // success
+    },
+    [projectId, upsertProject]
+  );
+
+  // --- Send prompt (tries client-side first, falls back to server-side) ---
   const sendPrompt = useCallback(
     async (prompt: string) => {
       if (!projectId) return;
@@ -152,6 +362,19 @@ export function useProjectWorkspace(projectId: string | null) {
       // Reset live state for the new run (but keep history).
       store.getState().resetLive();
 
+      // --- Try client-side generation first (bypasses server IP blocks) ---
+      // If the provider is BYOK (not platform), try making the API call
+      // directly from the browser. This uses the user's IP, not the server's,
+      // so it works even when the server's IP is blocked by the provider.
+      try {
+        const clientSuccess = await sendPromptClientSide(prompt);
+        if (clientSuccess) return; // client-side generation completed
+        // If client-side returned false, fall through to server-side
+      } catch {
+        // Client-side failed unexpectedly — fall through to server-side
+      }
+
+      // --- Server-side generation (fallback) ---
       try {
         const res = await fetch(`/api/projects/${projectId}/generate`, {
           method: "POST",
@@ -191,7 +414,7 @@ export function useProjectWorkspace(projectId: string | null) {
         store.getState().setLive({ isRunning: false, error: String(err) });
       }
     },
-    [projectId, attachStream]
+    [projectId, attachStream, sendPromptClientSide]
   );
 
   // Keep the ref current so hydrate can call the latest sendPrompt.
@@ -222,6 +445,12 @@ export function useProjectWorkspace(projectId: string | null) {
 
     // Optimistically update the UI to show "stopped" immediately.
     store.getState().setLive({ isRunning: false, step: "Stopping…" });
+
+    // Abort any client-side generation.
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
 
     // Close the EventStream so we stop receiving events.
     if (eventSourceRef.current) {

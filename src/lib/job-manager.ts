@@ -177,12 +177,25 @@ class JobManager {
         const ce = configErr as LLMError;
         const fallbackCodes = ["NO_BASE_URL", "NO_KEY", "REGION_BLOCKED", "AUTH", "NETWORK"];
         if (ce.code && fallbackCodes.includes(ce.code) && config.provider !== "platform") {
-          // Fall back to platform model.
+          // Fall back to platform model — emit a visible warning event so the
+          // user knows their BYOK key was rejected and the platform model is
+          // being used instead.
+          const providerLabel = config.provider;
+          const reason =
+            ce.code === "AUTH"
+              ? `rejected by ${providerLabel} (HTTP 403 — invalid key or IP/region block)`
+              : ce.code === "NO_BASE_URL"
+                ? "missing base URL"
+                : ce.code === "NO_KEY"
+                  ? "no API key configured"
+                  : ce.code === "REGION_BLOCKED"
+                    ? `region-blocked by ${providerLabel}`
+                    : `network error (${ce.code})`;
           this.emit(jobId, {
             type: "status",
             tokensUsed: 0,
             filesCompleted: 0,
-            step: `BYOK failed (${ce.code}), falling back to platform model…`,
+            step: `⚠️ ${providerLabel} key ${reason} — using platform demo model instead…`,
           });
           gen = streamGeneration({
             config: { provider: "platform", model: "glm-4.6" },

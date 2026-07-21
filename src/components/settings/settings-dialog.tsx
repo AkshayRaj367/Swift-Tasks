@@ -42,6 +42,7 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { safeJson } from "@/lib/safe-json";
@@ -461,6 +462,19 @@ export function SettingsDialog() {
             </div>
           )}
 
+          {/* Info note when validation fails — explain that generation still works */}
+          {testResult && !testResult.ok && provider !== "platform" && (
+            <div className="flex items-start gap-2 rounded-md bg-blue-500/5 border border-blue-500/20 px-3 py-2 text-xs text-blue-600 dark:text-blue-400">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                Even if validation fails, you can still save this key and generate —
+                the system will automatically fall back to the free platform demo model
+                if your provider rejects the request. Your key may work from a different
+                server or network.
+              </span>
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -512,8 +526,12 @@ function KeyRow({
               <Check className="h-2 w-2" /> valid
             </Badge>
           ) : (
-            <Badge variant="outline" className="h-4 gap-0.5 border-destructive/30 px-1 text-[9px] text-destructive">
-              <X className="h-2 w-2" /> invalid
+            <Badge
+              variant="outline"
+              className="h-4 gap-0.5 border-amber-500/30 px-1 text-[9px] text-amber-600 dark:text-amber-400"
+              title="This key couldn't be validated from the server. It might be invalid, expired, or the provider may be blocking this server's IP. Generation will still work via the platform demo model fallback."
+            >
+              <X className="h-2 w-2" /> unverified
             </Badge>
           )}
         </div>
