@@ -10,6 +10,13 @@ import { getCurrentUser } from "@/lib/user";
 import { jobManager } from "@/lib/job-manager";
 import type { ModelConfig } from "@/lib/types";
 
+// GET — friendly info message (prevents 405 in terminal on prefetch/direct nav)
+export async function GET() {
+  return NextResponse.json({
+    error: "This endpoint requires a POST request with { prompt }.",
+  });
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getCurrentUser();

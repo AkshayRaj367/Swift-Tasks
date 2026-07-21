@@ -4,6 +4,13 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/user";
 import { jobManager } from "@/lib/job-manager";
 
+// GET — friendly info message (prevents 405 in terminal on prefetch/direct nav)
+export async function GET() {
+  return NextResponse.json({
+    error: "This endpoint requires a POST request to cancel the active generation.",
+  });
+}
+
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getCurrentUser();

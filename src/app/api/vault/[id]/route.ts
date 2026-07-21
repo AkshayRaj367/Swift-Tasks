@@ -10,6 +10,14 @@ import { encrypt, decrypt, maskKey } from "@/lib/crypto";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+// GET — friendly info message (prevents 405 in terminal on prefetch/direct nav)
+// To read a vault entry's plaintext value, use GET /api/vault/[id]/reveal
+export async function GET() {
+  return NextResponse.json({
+    error: "Use GET /api/vault/[id]/reveal to decrypt, PATCH to update, or DELETE to remove.",
+  });
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getCurrentUser();

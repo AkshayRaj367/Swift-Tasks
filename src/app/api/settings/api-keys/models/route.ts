@@ -20,6 +20,13 @@ interface FetchedModel {
   contextWindow?: string;
 }
 
+// GET — friendly info message (prevents 405 in terminal on prefetch/direct nav)
+export async function GET() {
+  return NextResponse.json({
+    error: "This endpoint requires a POST request with { provider, apiKey, baseURL? }.",
+  });
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const provider = body.provider as string;

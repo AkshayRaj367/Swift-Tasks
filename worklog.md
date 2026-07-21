@@ -474,3 +474,41 @@ Stage Summary:
 - **"SyntaxError: Unexpected end of JSON input" eliminated**: all client-side and server-side JSON parsing is now safe. Empty/non-JSON responses produce meaningful error messages instead of crashing.
 - **"Exits less than a sec after prompt" fixed**: `sendPrompt` now safely parses the generate response and throws clear errors ("Server returned an invalid response", "Server did not return a job ID") instead of silently crashing on bad JSON.
 - Created a reusable `safe-json.ts` helper for consistent safe JSON parsing across the codebase.
+
+---
+
+Task ID: 11
+Agent: main (Z.ai Code)
+Task: Fix 405 Method Not Allowed errors appearing in VS Code terminal.
+
+Work Log:
+- **Root cause analysis**: The 405 errors in the VS Code terminal came from API routes that only exported a POST/DELETE handler but received a GET request. This happens when:
+  1. The browser prefetches links (Next.js Link prefetching sends GET requests)
+  2. The user navigates directly to an API URL in the browser address bar
+  3. A fetch call accidentally uses the wrong method
+  - Next.js returns a 405 Method Not Allowed when a route file doesn't export the requested HTTP method, and logs it to the terminal.
+- **Audited all API routes** and found 8 routes that could 405:
+  1. `GET /api/settings/api-keys/test` (only POST)
+  2. `GET /api/settings/api-keys/models` (only POST)
+  3. `GET /api/settings/api-keys/[id]` (only DELETE)
+  4. `GET /api/projects/[id]/generate` (only POST)
+  5. `GET /api/projects/[id]/stop` (only POST)
+  6. `GET /api/projects/[id]/deploy/netlify` (only POST)
+  7. `GET /api/projects/[id]/files` (only PUT/DELETE/PATCH)
+  8. `GET /api/vault/[id]` (only PATCH/DELETE)
+- **Fix**: added a GET handler to each of these routes that returns a friendly JSON info message explaining what method + body the endpoint expects. This prevents the 405 and gives the user a helpful message if they navigate there directly.
+  - `GET /api/settings/api-keys/test` → `{"error":"This endpoint requires a POST request with { provider, apiKey, model, baseURL? }."}`
+  - `GET /api/settings/api-keys/models` → `{"error":"This endpoint requires a POST request with { provider, apiKey, baseURL? }."}`
+  - `GET /api/settings/api-keys/[id]` → `{"error":"This endpoint only supports DELETE to remove a stored API key."}`
+  - `GET /api/projects/[id]/generate` → `{"error":"This endpoint requires a POST request with { prompt }."}`
+  - `GET /api/projects/[id]/stop` → `{"error":"This endpoint requires a POST request to cancel the active generation."}`
+  - `GET /api/projects/[id]/deploy/netlify` → `{"error":"This endpoint requires a POST request with { token, siteName? }."}`
+  - `GET /api/projects/[id]/files` → `{"error":"Use PUT to upsert, DELETE ?path=... to remove, or PATCH ?path=... to rename."}`
+  - `GET /api/vault/[id]` → `{"error":"Use GET /api/vault/[id]/reveal to decrypt, PATCH to update, or DELETE to remove."}`
+- Lint clean (0 errors, 0 warnings).
+- Verified all 8 previously-405 routes now return 200 with the friendly message.
+- Verified all POST/PUT/DELETE routes still work correctly (generate, stop, test, models, files PUT).
+
+Stage Summary:
+- **All 405 errors eliminated**: every API route now handles GET requests with a friendly info message instead of returning 405 Method Not Allowed. The VS Code terminal will no longer show 405 errors from browser prefetching or direct navigation.
+- The actual POST/PUT/DELETE functionality is unchanged — the GET handlers are purely informational.

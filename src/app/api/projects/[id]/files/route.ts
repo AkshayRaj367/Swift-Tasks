@@ -7,6 +7,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/user";
 
+// GET — friendly info message (prevents 405 in terminal on prefetch/direct nav)
+export async function GET() {
+  return NextResponse.json({
+    error: "Use PUT to upsert, DELETE ?path=... to remove, or PATCH ?path=... to rename.",
+  });
+}
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getCurrentUser();
