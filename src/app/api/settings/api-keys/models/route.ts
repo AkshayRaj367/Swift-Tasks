@@ -100,15 +100,23 @@ async function fetchModels(
     throw err;
   }
 
-  const data = await res.json();
+  // Parse safely — some providers return empty bodies or non-JSON for certain endpoints.
+  const text = await res.text();
+  let data: unknown;
+  try {
+    data = text.trim() ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`Provider returned a non-JSON response when listing models.`);
+  }
   // OpenAI-compatible shape: { data: [{ id, owned_by }] }
   // OpenRouter adds: { data: [{ id, name, context_length }] }
-  const raw: unknown[] = Array.isArray(data?.data)
-    ? data.data
-    : Array.isArray(data?.models)
-      ? data.models
+  const obj = data as { data?: unknown[]; models?: unknown[] };
+  const raw: unknown[] = Array.isArray(obj?.data)
+    ? obj.data
+    : Array.isArray(obj?.models)
+      ? obj.models
       : Array.isArray(data)
-        ? data
+        ? (data as unknown[])
         : [];
 
   const models: FetchedModel[] = raw
@@ -166,8 +174,17 @@ async function fetchAnthropicModels(
     err.status = res.status;
     throw err;
   }
-  const data = await res.json();
-  const raw: unknown[] = Array.isArray(data?.data) ? data.data : [];
+  // Parse safely — Anthropic can return empty bodies in edge cases.
+  const text = await res.text();
+  let data: unknown;
+  try {
+    data = text.trim() ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`Anthropic returned a non-JSON response when listing models.`);
+  }
+  const raw: unknown[] = Array.isArray((data as { data?: unknown[] })?.data)
+    ? (data as { data: unknown[] }).data
+    : [];
   return raw
     .map((item: unknown) => {
       const m = item as { id?: string; display_name?: string };

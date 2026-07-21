@@ -435,3 +435,42 @@ Stage Summary:
 - **ERR_CONNECTION_REFUSED fixed**: setup.js now offers to auto-start the dev server (or use `--start` flag). The `dev` script no longer uses Unix-only `tee`.
 - **Database access added**: `bun run db:studio` opens Prisma Studio (visual browser). README documents 3 ways to view the SQLite database.
 - Cross-platform `dev` script: removed `tee` pipe that broke on Windows.
+
+---
+
+Task ID: 10
+Agent: main (Z.ai Code)
+Task: Fix "SyntaxError: Unexpected end of JSON input" when testing API + generation exiting <1s after prompt.
+
+Work Log:
+- **Root cause analysis**: The "SyntaxError: Unexpected end of JSON input" occurred because multiple client-side and server-side calls used `await res.json()` directly without checking if the response body was empty or non-JSON. When a provider returned an empty body (e.g. on certain error conditions) or an HTML error page, `JSON.parse("")` or `JSON.parse("<html>...")` threw the SyntaxError. This propagated up as an uncaught error, causing:
+  1. The "Test" button to show "SyntaxError: Unexpected end of JSON input" instead of a meaningful error
+  2. The `sendPrompt` function to throw before attaching the SSE stream, causing generation to "exit less than a sec"
+  3. The `fetchModels` function to set `modelsError = "SyntaxError: Unexpected end of JSON input"`
+- **Created `src/lib/safe-json.ts`** with two helpers:
+  - `safeJson<T>(res)` — reads the response as text first, returns null if empty or invalid JSON (never throws)
+  - `safeFetchJson<T>(url, init)` — full safe fetch wrapper returning `{ ok, status, data/error }`
+- **Fixed client-side `settings-dialog.tsx`**:
+  - `fetchModels()`: replaced `await res.json()` with `await safeJson(res)` — shows `Failed to fetch models (HTTP {status})` on error instead of SyntaxError
+  - `handleTest()`: replaced `await res.json()` with `await safeJson(res)` — shows proper error message from the API or a status-based fallback
+  - `handleSave()`: replaced `await res.json()` with `await safeJson(res)` — throws a clear error if the save fails
+- **Fixed client-side `use-project-workspace.ts`** (`sendPrompt`):
+  - Replaced the unsafe `await res.json()` calls with explicit text-then-parse logic:
+    - On `!res.ok`: reads the error body as text, tries to parse JSON for an `.error` field, falls back to the raw text or a status-based message
+    - On success: reads the body as text, safely parses JSON, throws "Server returned an invalid response" if parsing fails, throws "Server did not return a job ID" if `job` is missing
+  - This prevents the "exits less than a sec" symptom — the user now gets a clear toast message instead of a silent crash
+- **Fixed server-side `models` route** (`src/app/api/settings/api-keys/models/route.ts`):
+  - Both the OpenAI-compatible path and the Anthropic path now use `await res.text()` + safe `JSON.parse` with a try/catch that throws "Provider returned a non-JSON response when listing models" instead of crashing with a SyntaxError
+  - Cast the parsed `data` to the expected shape via `as { data?: unknown[]; models?: unknown[] }` to satisfy TypeScript
+- Lint clean (0 errors, 0 warnings).
+- Verified with curl + agent-browser:
+  - Models endpoint with invalid Groq key → `{"error":"Failed to fetch models (HTTP 403): ...","status":403}` (proper JSON, no crash)
+  - Test endpoint with invalid key → `{"ok":false,"error":"...","code":"REGION_BLOCKED"}` (proper error, no SyntaxError)
+  - Generate with no BYOK key → auto-fallback to platform, 1 file generated successfully
+  - Settings dialog Test button with invalid OpenRouter key → shows "Authentication failed for openrouter. Check your API key." (no SyntaxError)
+  - No console errors
+
+Stage Summary:
+- **"SyntaxError: Unexpected end of JSON input" eliminated**: all client-side and server-side JSON parsing is now safe. Empty/non-JSON responses produce meaningful error messages instead of crashing.
+- **"Exits less than a sec after prompt" fixed**: `sendPrompt` now safely parses the generate response and throws clear errors ("Server returned an invalid response", "Server did not return a job ID") instead of silently crashing on bad JSON.
+- Created a reusable `safe-json.ts` helper for consistent safe JSON parsing across the codebase.

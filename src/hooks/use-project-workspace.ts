@@ -159,10 +159,27 @@ export function useProjectWorkspace(projectId: string | null) {
           body: JSON.stringify({ prompt }),
         });
         if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || `Failed to start (${res.status})`);
+          const err = await res.text().catch(() => "");
+          let errorMsg = `Failed to start (${res.status})`;
+          try {
+            const parsed = JSON.parse(err);
+            if (parsed?.error) errorMsg = parsed.error;
+          } catch {
+            if (err) errorMsg = err.slice(0, 200);
+          }
+          throw new Error(errorMsg);
         }
-        const { job } = await res.json();
+        const text = await res.text();
+        let job: { id: string } | null = null;
+        try {
+          const parsed = JSON.parse(text);
+          job = parsed?.job ?? null;
+        } catch {
+          throw new Error("Server returned an invalid response. Please try again.");
+        }
+        if (!job) {
+          throw new Error("Server did not return a job ID. Please try again.");
+        }
         store.getState().setLive({ jobId: job.id, isRunning: true, step: "Starting…" });
         attachStream(projectId, job.id, 0);
       } catch (err) {

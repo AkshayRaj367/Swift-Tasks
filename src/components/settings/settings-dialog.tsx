@@ -44,6 +44,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { safeJson } from "@/lib/safe-json";
 
 interface FetchedModel {
   id: string;
@@ -128,14 +129,13 @@ export function SettingsDialog() {
           baseURL: baseURL.trim() || undefined,
         }),
       });
-      const data = await res.json();
+      const data = await safeJson<{ models?: FetchedModel[]; error?: string }>(res);
       if (!res.ok) {
-        setModelsError(data.error || "Failed to fetch models");
+        setModelsError(data?.error || `Failed to fetch models (HTTP ${res.status})`);
         setFetchedModels([]);
       } else {
-        setFetchedModels(data.models || []);
-        // Auto-select the first model if none selected.
-        if (data.models?.length > 0 && !model) {
+        setFetchedModels(data?.models || []);
+        if (data?.models?.length && data.models.length > 0 && !model) {
           setModel(data.models[0].id);
         }
       }
@@ -169,12 +169,14 @@ export function SettingsDialog() {
           baseURL: baseURL || undefined,
         }),
       });
-      const data = await res.json();
-      setTestResult({ ok: data.ok, error: data.error });
+      const data = await safeJson<{ ok?: boolean; error?: string; code?: string }>(res);
+      const ok = data?.ok ?? false;
+      const errorMsg = data?.error || `Validation failed (HTTP ${res.status})`;
+      setTestResult({ ok, error: ok ? undefined : errorMsg });
       toast({
-        title: data.ok ? "Key is valid" : "Validation failed",
-        description: data.ok ? `${providerDef.label} · ${model}` : data.error,
-        variant: data.ok ? "default" : "destructive",
+        title: ok ? "Key is valid" : "Validation failed",
+        description: ok ? `${providerDef.label} · ${model}` : errorMsg,
+        variant: ok ? "default" : "destructive",
       });
     } catch (err) {
       setTestResult({ ok: false, error: String(err) });
@@ -201,8 +203,11 @@ export function SettingsDialog() {
           makeDefault: true,
         }),
       });
-      const data = await res.json();
-      if (data.key) {
+      const data = await safeJson<{ key?: ApiKeyConfigPublic; warning?: string; error?: string }>(res);
+      if (!res.ok) {
+        throw new Error(data?.error || `Failed to save (HTTP ${res.status})`);
+      }
+      if (data?.key) {
         upsertApiKey(data.key);
         setApiKey("");
         setTestResult(null);
