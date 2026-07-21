@@ -126,11 +126,18 @@ class JobManager {
     let assistantText = "";
 
     try {
-      // Resolve API key (decrypted) — only needed for BYOK providers.
+      // Resolve API key (decrypted) + the saved key's baseURL — only needed
+      // for BYOK providers. The saved key's baseURL takes priority over the
+      // project config's baseURL to ensure key+endpoint always match.
       let apiKey: string | null = null;
+      let resolvedBaseURL: string | undefined = config.baseURL;
       if (config.provider !== "platform") {
-        apiKey = await this.resolveApiKey(projectId, config);
+        const resolved = await this.resolveApiKey(projectId, config);
+        apiKey = resolved.key;
+        if (resolved.baseURL) resolvedBaseURL = resolved.baseURL;
       }
+      // Build the effective config with the resolved baseURL.
+      const effectiveConfig = { ...config, baseURL: resolvedBaseURL };
 
       // Build the message list from history + new prompt.
       const messages: CoreMessage[] = history.map((m) => ({
@@ -151,7 +158,7 @@ class JobManager {
       let gen: AsyncGenerator<string, void, unknown>;
       try {
         const primary = streamGeneration({
-          config,
+          config: effectiveConfig,
           apiKey,
           messages: [...messages, { role: "user", content: instruction }],
           signal: runtime.controller.signal,
@@ -349,20 +356,27 @@ class JobManager {
 
   // Persistence is fed directly from the parser's file_done event content.
 
-  private async resolveApiKey(projectId: string, config: ModelConfig): Promise<string | null> {
-    // Project-level key not stored separately in this MVP; we use the user's
-    // default ApiKeyConfig for the provider. Per-project override is captured
-    // in project.modelConfig but the key itself comes from the user's vault.
+  /** Resolve the API key AND the saved key's baseURL for a provider.
+   *  The saved key's baseURL takes priority over the project config's baseURL
+   *  to ensure the key and endpoint always match (mismatches cause silent 401s). */
+  private async resolveApiKey(
+    projectId: string,
+    config: ModelConfig
+  ): Promise<{ key: string | null; baseURL: string | null }> {
     const user = await db.user.findFirst();
-    if (!user) return null;
+    if (!user) return { key: null, baseURL: null };
     const keyConfig = await db.apiKeyConfig.findFirst({
       where: { userId: user.id, provider: config.provider },
     });
-    if (!keyConfig || !keyConfig.encryptedKey) return null;
+    if (!keyConfig || !keyConfig.encryptedKey)
+      return { key: null, baseURL: keyConfig?.baseURL || null };
     try {
-      return decrypt(keyConfig.encryptedKey);
+      return {
+        key: decrypt(keyConfig.encryptedKey),
+        baseURL: keyConfig.baseURL || null,
+      };
     } catch {
-      return null;
+      return { key: null, baseURL: null };
     }
   }
 

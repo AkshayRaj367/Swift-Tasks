@@ -63,8 +63,15 @@ export async function* streamGeneration(opts: StreamOpts): AsyncGenerator<string
       abortSignal: signal,
     });
     try {
-      for await (const chunk of result.textStream) yield chunk;
+      for await (const part of result.fullStream) {
+        if (part.type === "text-delta" && part.textDelta) {
+          yield part.textDelta;
+        } else if (part.type === "error") {
+          throw normalizeAIError(part.error, "anthropic");
+        }
+      }
     } catch (err) {
+      if (err instanceof Error && (err as LLMError).code) throw err;
       throw normalizeAIError(err, "anthropic");
     }
     return;
@@ -103,17 +110,32 @@ export async function* streamGeneration(opts: StreamOpts): AsyncGenerator<string
   });
 
   // Force Chat Completions API — see comment above.
-  const result = streamText({
-    model: openai.chat(config.model),
-    system,
-    messages,
-    temperature: config.temperature ?? 0.7,
-    maxOutputTokens: config.maxTokens ?? 8192,
-    abortSignal: signal,
-  });
+  let result;
   try {
-    for await (const chunk of result.textStream) yield chunk;
+    result = streamText({
+      model: openai.chat(config.model),
+      system,
+      messages,
+      temperature: config.temperature ?? 0.7,
+      maxOutputTokens: config.maxTokens ?? 8192,
+      abortSignal: signal,
+    });
   } catch (err) {
+    throw normalizeAIError(err, config.provider);
+  }
+  // Use fullStream (not textStream) so we can catch error events that the
+  // SDK would otherwise swallow silently. textStream just ends on error.
+  try {
+    for await (const part of result.fullStream) {
+      if (part.type === "text-delta" && part.textDelta) {
+        yield part.textDelta;
+      } else if (part.type === "error") {
+        throw normalizeAIError(part.error, config.provider);
+      }
+    }
+  } catch (err) {
+    // Re-normalize in case it's a raw error that escaped the part check.
+    if (err instanceof Error && (err as LLMError).code) throw err;
     throw normalizeAIError(err, config.provider);
   }
 }
@@ -196,9 +218,10 @@ async function* streamPlatform(
 }
 
 function normalizeAIError(err: unknown, provider: string): LLMError {
-  const e = err as { name?: string; message?: string; status?: number; responseStatus?: number; responseBody?: string };
+  const e = err as { name?: string; message?: string; status?: number; statusCode?: number; responseStatus?: number; responseBody?: string };
   const msg = e?.message || String(err);
-  const status = e?.status || e?.responseStatus;
+  // AI SDK v4 uses `statusCode`; older errors use `status`.
+  const status = e?.status || e?.statusCode || e?.responseStatus;
   const body = e?.responseBody || "";
 
   // Region / country not supported (common with OpenAI Responses API from

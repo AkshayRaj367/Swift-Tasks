@@ -265,3 +265,48 @@ Unresolved / next-phase:
 - The Vault could integrate with the Deploy dialog (auto-fill the Netlify token from the vault).
 - Consider adding vault entry export/import (encrypted JSON backup).
 - Consider adding a vault entry "use in Settings" quick action that copies the value into the API key field.
+
+---
+
+Task ID: 6
+Agent: main (Z.ai Code)
+Task: Fix "enter model id manually" no functionality; fix broken models (generation ends <1s); fix preview panel not sticky; fix new project chat UI tiny; add detailed industry-standard documentation.
+
+Work Log:
+- **Bug fix: models broken — generation ends in <1s (critical regression).**
+  - Root cause chain (3 compounding bugs):
+    1. `normalizeAIError` checked `e.status` but AI SDK v4 uses `e.statusCode` → 401/403 errors fell through to generic `PROVIDER` code → no auto-fallback.
+    2. Project's `modelConfig.baseURL` was `https://openrouter.ai/api/v1` but the saved key's `baseURL` was `https://api.groq.com/openai/v1` → Groq key sent to OpenRouter → 401.
+    3. AI SDK v4's `textStream` ends silently on API errors (no throw) → the `for await` catch block never fired → 0 files, no error surfaced.
+  - Fixes:
+    1. `normalizeAIError`: added `e.statusCode` to the status check (`e?.status || e?.statusCode || e?.responseStatus`).
+    2. `resolveApiKey`: now returns `{ key, baseURL }` — the saved key's `baseURL` takes priority over the project config's `baseURL` to ensure key+endpoint always match.
+    3. `streamGeneration`: switched from `result.textStream` to `result.fullStream` which yields `{ type: "error", error }` events that we catch and normalize. Applied to both OpenAI-compatible and Anthropic paths.
+  - Verified: generation now works end-to-end — Groq 403 → normalized to REGION_BLOCKED → auto-fallback to platform → 3 files generated.
+- **Bug fix: "enter model id manually" has no functionality.**
+  - The "Add in Settings" item in the model selector dropdown was `disabled` — clicking it did nothing.
+  - Fix: removed `disabled`, added sentinel value `__configure__`, and intercepted it in `onValueChange` to call `setSettingsOpen(true)` instead of setting the model.
+  - The manual model entry keyboard button in Settings was already functional from round 4 — verified it still works.
+- **Bug fix: preview panel not sticky / scrolls away.**
+  - Root cause: the Workspace component didn't wrap its return value in a `flex-1 min-w-0 overflow-hidden` div, so the height wasn't properly bounded for the split panels.
+  - Fix: wrapped `ResizableWorkspace` in `<div className="flex min-w-0 flex-1 overflow-hidden">`. Changed the `ResizablePanelGroup` to `h-full flex-1`. Both chat and preview panels now have independent internal scroll — scrolling chat never moves the preview.
+- **Bug fix: new project chat UI is tiny.**
+  - Root cause: non-compact ChatPanel body used `max-w-2xl mx-auto p-6` (672px centered) — too narrow.
+  - Fix: changed to `max-w-4xl mx-auto p-6 lg:p-8` (896px, wider on large screens). Also added `min-h-0` to the ScrollArea to ensure proper flex scrolling.
+- **New: detailed industry-standard documentation.**
+  - `README.md` — comprehensive project documentation: overview, features, tech stack, quick start, project structure, architecture summary, configuration, API reference, security, deployment, contributing, license. Includes badges, table of contents, comparison table, and data flow diagram.
+  - `ARCHITECTURE.md` — detailed technical architecture: high-level diagram (ASCII), core principles, project isolation design, generation pipeline flow, state management hierarchy, SSE streaming protocol, error handling & auto-fallback (with error code table), database schema, security model, and 5 documented architectural tradeoffs with rationale.
+  - `CONTRIBUTING.md` — contributor guide: development setup, scripts, code style (TypeScript, React, state management, styling, file organization, naming conventions), key review criteria, PR process, how to add a new provider, debugging guide, common issues table.
+- Lint clean (0 errors, 0 warnings).
+- Verified with agent-browser: model selector shows saved `openai/gpt-oss-120b` + "Add in Settings" is clickable; generation works (3 files via auto-fallback); new project chat fills screen; preview panel stays in place when scrolling chat; no console errors.
+
+Stage Summary:
+- **Models fixed**: 3 compounding bugs (statusCode property, baseURL mismatch, silent textStream) all fixed. Generation works end-to-end with auto-fallback.
+- **Model selector fixed**: "Add in Settings" is now clickable (opens Settings dialog). Saved models always appear in the dropdown.
+- **Layout fixed**: preview panel is sticky (independent scroll), new project chat fills the screen (max-w-4xl).
+- **Documentation shipped**: 3 comprehensive docs (README 400+ lines, ARCHITECTURE 300+ lines, CONTRIBUTING 200+ lines) covering everything from quick start to architectural tradeoffs.
+
+Unresolved / next-phase:
+- Consider adding a "Fix configuration" inline button when auto-fallback occurs.
+- Consider adding Vercel deploy integration alongside Netlify.
+- Consider adding E2E tests for the isolation boundary.

@@ -121,8 +121,8 @@ export function ChatPanel({
       </div>
 
       {/* Body */}
-      <ScrollArea ref={scrollRef} className="flex-1">
-        <div className={cn("space-y-4", compact ? "p-3" : "max-w-2xl mx-auto p-6")}>
+      <ScrollArea ref={scrollRef} className="min-h-0 flex-1">
+        <div className={cn("space-y-4", compact ? "p-3" : "mx-auto max-w-4xl p-6 lg:p-8")}>
           {messages.length === 0 && !isRunning && (
             <EmptyChatState onPick={(p) => sendPrompt(p)} compact={compact} />
           )}

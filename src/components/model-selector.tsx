@@ -111,7 +111,13 @@ function ModelSelectorInner({ projectId }: { projectId: string }) {
         value={currentValue}
         onValueChange={(v) => {
           const [p, ...rest] = v.split("::");
-          applyChange(p as Provider, rest.join("::"));
+          const m = rest.join("::");
+          // Intercept the "Add in Settings" sentinel.
+          if (m === "__configure__") {
+            setSettingsOpen(true);
+            return;
+          }
+          applyChange(p as Provider, m);
         }}
       >
         <SelectTrigger className="h-8 w-auto max-w-[280px] min-w-[120px] gap-1 border-none bg-muted/50 px-2 text-xs font-medium hover:bg-muted">
@@ -132,18 +138,11 @@ function ModelSelectorInner({ projectId }: { projectId: string }) {
                 {models.length === 0 ? (
                   <SelectItem
                     value={`${p.id}::__configure__`}
-                    disabled
-                    className="text-xs text-muted-foreground"
+                    className="text-xs text-primary"
                   >
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setSettingsOpen(true);
-                      }}
-                      className="flex items-center gap-1 text-primary"
-                    >
+                    <span className="flex items-center gap-1">
                       <Plus className="h-3 w-3" /> Add in Settings
-                    </button>
+                    </span>
                   </SelectItem>
                 ) : (
                   models.map((m) => (

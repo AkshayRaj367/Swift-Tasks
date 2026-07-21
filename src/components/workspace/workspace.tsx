@@ -2,6 +2,11 @@
 
 // Workspace — binds to the active project's per-project store and renders
 // either the empty/prompt state or the split chat + code/preview view.
+//
+// LAYOUT: The workspace fills the remaining space in <main> via flex-1.
+// When content exists, it shows a resizable split: chat (left) | preview (right).
+// Both panels are h-full with their own internal scroll — scrolling chat never
+// moves the preview, and vice versa.
 
 import { useAppStore } from "@/store/app-store";
 import { getProjectStore } from "@/store/project-stores";
@@ -20,20 +25,18 @@ export function Workspace({ projectId }: { projectId: string | null }) {
   const { sendPrompt, stopGeneration, saveFile } = useProjectWorkspace(projectId);
 
   if (!projectId) {
-    return <WelcomeScreen onPick={async (prompt) => {
-      // Create a project first, then send. WelcomeScreen handles the create+send flow.
-      void sendPrompt;
-      // Delegate creation to the top bar's New Project button in this case.
-    }} />;
+    return <WelcomeScreen onPick={async () => { void sendPrompt; }} />;
   }
 
   return (
-    <ResizableWorkspace
-      projectId={projectId}
-      sendPrompt={sendPrompt}
-      stopGeneration={stopGeneration}
-      saveFile={saveFile}
-    />
+    <div className="flex min-w-0 flex-1 overflow-hidden">
+      <ResizableWorkspace
+        projectId={projectId}
+        sendPrompt={sendPrompt}
+        stopGeneration={stopGeneration}
+        saveFile={saveFile}
+      />
+    </div>
   );
 }
 
@@ -56,7 +59,7 @@ function ResizableWorkspace({
   const hasContent = messages.length > 0 || files.length > 0 || isRunning;
 
   if (!hasContent) {
-    // Empty project — show the prompt input + example prompts.
+    // Empty project — show the prompt input + example prompts, filling the screen.
     return (
       <ChatPanel
         projectId={projectId}
@@ -67,9 +70,11 @@ function ResizableWorkspace({
     );
   }
 
+  // Split view: chat (left) | code/preview (right).
+  // Both panels are h-full with internal scroll — they never push each other.
   return (
-    <ResizablePanelGroup direction="horizontal" className="flex-1">
-      <ResizablePanel defaultSize={38} minSize={28}>
+    <ResizablePanelGroup direction="horizontal" className="h-full flex-1">
+      <ResizablePanel defaultSize={38} minSize={24}>
         <ChatPanel
           projectId={projectId}
           sendPrompt={sendPrompt}
