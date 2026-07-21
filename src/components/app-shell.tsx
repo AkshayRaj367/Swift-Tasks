@@ -23,6 +23,7 @@ import { Workspace } from "@/components/workspace/workspace";
 import { StatusBar } from "@/components/status-bar";
 import { SettingsDialog } from "@/components/settings/settings-dialog";
 import { DeployDialog } from "@/components/deploy-dialog";
+import { VaultDialog } from "@/components/vault-dialog";
 import { CommandPalette } from "@/components/command-palette";
 import { useAppStore } from "@/store/app-store";
 import { useToast } from "@/hooks/use-toast";
@@ -35,6 +36,7 @@ export function AppShell() {
   const settingsOpen = useAppStore((s) => s.settingsOpen);
   const commandPaletteOpen = useAppStore((s) => s.commandPaletteOpen);
   const deployOpen = useAppStore((s) => s.deployOpen);
+  const vaultOpen = useAppStore((s) => s.vaultOpen);
   const { toast } = useToast();
 
   // Global keyboard shortcuts (Cmd+K, Cmd+B, Cmd+S, etc.)
@@ -91,6 +93,7 @@ export function AppShell() {
       <StatusBar />
       {settingsOpen && <SettingsDialog />}
       {deployOpen && <DeployDialog />}
+      {vaultOpen && <VaultDialog />}
       {commandPaletteOpen && <CommandPalette />}
     </div>
   );

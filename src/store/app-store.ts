@@ -37,6 +37,8 @@ interface AppState {
   setCommandPaletteOpen: (b: boolean) => void;
   deployOpen: boolean;
   setDeployOpen: (b: boolean) => void;
+  vaultOpen: boolean;
+  setVaultOpen: (b: boolean) => void;
 
   // --- Pending prompt (welcome-screen → new-project handoff) ---
   // When a user picks an example from the welcome screen, we create a project,
@@ -87,6 +89,8 @@ export const useAppStore = create<AppState>((set) => ({
   setCommandPaletteOpen: (b) => set({ commandPaletteOpen: b }),
   deployOpen: false,
   setDeployOpen: (b) => set({ deployOpen: b }),
+  vaultOpen: false,
+  setVaultOpen: (b) => set({ vaultOpen: b }),
 
   pendingPrompt: null,
   setPendingPrompt: (p) => set({ pendingPrompt: p }),

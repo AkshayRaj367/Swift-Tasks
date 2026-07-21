@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Plus, Settings, Sparkles, Sun, Moon, Search, PanelLeft, Download, Rocket } from "lucide-react";
+import { Plus, Settings, Sparkles, Sun, Moon, Search, PanelLeft, Download, Rocket, Lock } from "lucide-react";
 import { useAppStore } from "@/store/app-store";
 import { useTheme } from "next-themes";
 import { ModelSelector } from "@/components/model-selector";
@@ -13,6 +13,7 @@ export function TopBar() {
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen);
   const setDeployOpen = useAppStore((s) => s.setDeployOpen);
+  const setVaultOpen = useAppStore((s) => s.setVaultOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const projects = useAppStore((s) => s.projects);
   const activeProjectId = useAppStore((s) => s.activeProjectId);
@@ -160,6 +161,16 @@ export function TopBar() {
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
         )}
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => setVaultOpen(true)}
+          title="Secure Vault"
+        >
+          <Lock className="h-4 w-4" />
+        </Button>
 
         <Button
           variant="ghost"

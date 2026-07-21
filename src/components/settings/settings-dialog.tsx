@@ -235,7 +235,8 @@ export function SettingsDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col overflow-hidden p-0">
+        <div className="flex-1 overflow-y-auto p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Key className="h-4 w-4" /> API Keys & Model Providers
@@ -266,11 +267,12 @@ export function SettingsDialog() {
             <Plus className="h-4 w-4" /> Add a provider
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Provider + Model: stack on narrow, 2-col on wider screens */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label className="text-xs">Provider</Label>
               <Select value={provider} onValueChange={(v) => setProvider(v as Provider)}>
-                <SelectTrigger className="h-9">
+                <SelectTrigger className="h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -282,15 +284,19 @@ export function SettingsDialog() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Model picker — full width, no overflow.
+                The Select and the keyboard-toggle button wrap cleanly.
+                Priority: fetched > presets > manual input. */}
             <div className="space-y-1.5">
-              <Label className="flex items-center justify-between text-xs">
-                <span>Model</span>
+              <Label className="flex items-center justify-between gap-2 text-xs">
+                <span className="shrink-0">Model</span>
                 {provider !== "platform" && (
                   <button
                     type="button"
                     onClick={() => void fetchModels()}
                     disabled={!canFetchModels || modelsLoading}
-                    className="flex items-center gap-1 text-[10px] text-primary hover:underline disabled:opacity-40 disabled:no-underline"
+                    className="flex shrink-0 items-center gap-1 text-[10px] text-primary hover:underline disabled:opacity-40 disabled:no-underline"
                     title="Fetch available models from the provider"
                   >
                     {modelsLoading ? (
@@ -298,15 +304,11 @@ export function SettingsDialog() {
                     ) : (
                       <RefreshCw className="h-2.5 w-2.5" />
                     )}
-                    {modelsLoading ? "Fetching…" : "Refresh models"}
+                    <span className="hidden sm:inline">{modelsLoading ? "Fetching…" : "Refresh"}</span>
                   </button>
                 )}
               </Label>
 
-              {/* Model picker.
-                  Priority: fetched models > preset models > manual input.
-                  A "Type manually" toggle is always available so the user can
-                  enter an arbitrary model id even when presets exist. */}
               {manualModelEntry ? (
                 <div className="flex gap-1.5">
                   <Input
@@ -314,7 +316,7 @@ export function SettingsDialog() {
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
                     placeholder="e.g. llama-3.1-70b-instruct"
-                    className="h-9 font-mono text-xs"
+                    className="h-9 min-w-0 flex-1 font-mono text-xs"
                   />
                   <Button
                     type="button"
@@ -322,6 +324,7 @@ export function SettingsDialog() {
                     size="sm"
                     className="h-9 shrink-0"
                     onClick={() => setManualModelEntry(false)}
+                    disabled={availableModels.length === 0}
                   >
                     List
                   </Button>
@@ -329,16 +332,16 @@ export function SettingsDialog() {
               ) : availableModels.length > 0 ? (
                 <div className="flex gap-1.5">
                   <Select value={model} onValueChange={setModel}>
-                    <SelectTrigger className="h-9">
+                    <SelectTrigger className="h-9 min-w-0 flex-1">
                       <SelectValue placeholder="Select a model" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-[300px]">
                       {availableModels.map((m) => (
                         <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
                           <span className="flex items-center gap-2">
-                            <span>{m.label || m.id}</span>
+                            <span className="truncate">{m.label || m.id}</span>
                             {m.contextWindow && (
-                              <span className="text-[9px] text-muted-foreground">{m.contextWindow}</span>
+                              <span className="shrink-0 text-[9px] text-muted-foreground">{m.contextWindow}</span>
                             )}
                           </span>
                         </SelectItem>
@@ -365,23 +368,12 @@ export function SettingsDialog() {
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
                     placeholder="e.g. llama-3.1-70b-instruct"
-                    className="h-9 font-mono text-xs"
+                    className="h-9 min-w-0 flex-1 font-mono text-xs"
                   />
-                  {availableModels.length > 0 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-9 shrink-0"
-                      onClick={() => setManualModelEntry(false)}
-                    >
-                      List
-                    </Button>
-                  )}
                 </div>
               )}
 
-              {/* Status line under the model picker */}
+              {/* Status line */}
               {provider !== "platform" && (
                 <div className="min-h-[14px] text-[10px]">
                   {modelsLoading ? (
@@ -391,7 +383,7 @@ export function SettingsDialog() {
                     </span>
                   ) : modelsError ? (
                     <span className="text-amber-600 dark:text-amber-400">
-                      {modelsError} — you can still type a model id manually.
+                      {modelsError} — type a model id manually.
                     </span>
                   ) : fetchedModels.length > 0 ? (
                     <span className="text-emerald-600 dark:text-emerald-400">
@@ -524,8 +516,9 @@ export function SettingsDialog() {
             </Button>
           </div>
         </div>
+        </div>
 
-        <DialogFooter className="text-xs text-muted-foreground">
+        <DialogFooter className="shrink-0 border-t bg-background/95 px-6 py-2.5 text-xs text-muted-foreground backdrop-blur">
           <span className="flex items-center gap-1.5">
             <ShieldCheck className="h-3.5 w-3.5" /> Keys are AES-256-GCM encrypted server-side.
           </span>

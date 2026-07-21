@@ -146,3 +146,25 @@ model Deployment {
   @@index([projectId])
 }
 
+/// Secure vault for arbitrary API keys / tokens / secrets the user wants to
+/// store for easy access (deploy tokens, database URLs, third-party API keys,
+/// notes, etc.). The value is AES-256-GCM encrypted at rest and never returned
+/// to the client in plaintext — only revealed on explicit "reveal" action.
+model VaultEntry {
+  id          String   @id @default(cuid())
+  userId      String
+  label       String
+  /// category for icon/color: apikey | token | note | password | other
+  category    String   @default("apikey")
+  /// encrypted ciphertext (iv:authTag:ciphertext, base64)
+  encryptedValue String @default("")
+  /// user-facing mask, e.g. "sk-...Ab12"
+  maskedValue String   @default("")
+  /// optional note shown in plaintext
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+

@@ -221,3 +221,47 @@ Unresolved / next-phase:
 - Netlify deploy requires the user to paste a personal access token (free at netlify.com). Consider adding a "Deploy to Vercel" option using Vercel's API for users who prefer Vercel.
 - Consider adding a "Deploy to Cloudflare Pages" direct API integration (currently only guide).
 - The Netlify token is stored in localStorage (client-side). For persistence across devices, could store it encrypted server-side like the LLM API keys.
+
+---
+
+Task ID: 5
+Agent: main (Z.ai Code)
+Task: Fix saved model not showing in model selector; fix manual entry + UI overlapping; add a secure vault for API keys/notes.
+
+Work Log:
+- **Bug fix: saved model not appearing in model selector.**
+  - Root cause: the ModelSelector only showed hardcoded preset models from `PROVIDERS`. When a user saved a model like `openai/gpt-oss-120b` (not in any preset list), it had no matching `SelectItem`, so the Select couldn't display the current value and the model appeared to vanish.
+  - Fix: rewrote `model-selector.tsx` with a **dynamic model list**. `modelsForProvider(p)` now merges three sources: (1) preset models, (2) models from the user's saved API key configs for that provider, (3) the currently-active model (always present even if not in any list). Deduped by id. The Select trigger uses `max-w-[280px] min-w-[120px]` with truncation so long model ids never overflow the topbar. SelectContent is `max-w-[360px]`.
+  - Verified: saved `openai/gpt-oss-120b` via Settings → it appeared in the topbar model dropdown under OpenRouter → selected it → topbar showed `openai/gpt-oss-120b` as active.
+- **Bug fix: manual model entry not functional + UI overlapping.**
+  - The manual entry keyboard-toggle button was already added in round 4, but the surrounding layout used a rigid `grid-cols-2` that caused the Select + button to overlap on narrower dialog widths. The `min-w-0` was missing on flex children, causing overflow.
+  - Fix: changed the form grid to `grid-cols-1 sm:grid-cols-2` (stacks on narrow). Added `min-w-0 flex-1` to every flex input/select so they shrink instead of overflowing. Added `max-h-[300px]` + `max-h-[400px]` to SelectContent to prevent the dropdown from exceeding the viewport. The SelectTrigger now uses `w-full` and `min-w-0 flex-1`.
+  - Restructured the settings dialog: `DialogContent` is now `flex max-h-[90vh] flex-col overflow-hidden p-0` with a scrollable body (`flex-1 overflow-y-auto p-6`) and a sticky footer (`shrink-0 border-t`). This prevents the footer from overlapping content and makes the whole dialog properly contained.
+- **New feature: Secure Vault.**
+  - New Prisma model `VaultEntry` (id, userId, label, category, encryptedValue, maskedValue, note, timestamps). Pushed to DB.
+  - New API routes:
+    - `GET/POST /api/vault` — list (masked only) + create (encrypts value with AES-256-GCM).
+    - `PATCH/DELETE /api/vault/[id]` — update + delete.
+    - `GET /api/vault/[id]/reveal` — the ONLY endpoint that returns plaintext (requires explicit "Reveal" click).
+  - New `VaultDialog` component (`src/components/vault-dialog.tsx`):
+    - 5 categories with icons + colors: API Key, Token, Password, Note, Other.
+    - Search bar to filter by label/note.
+    - Add form with label, category, secret value (password field), optional plaintext note.
+    - Entry list with expand/collapse (framer-motion animations). Each expanded entry shows: masked value, Reveal/Hide toggle, Copy button, Delete button, note, category, timestamps.
+    - "Reveal" calls the `/reveal` endpoint to decrypt; "Hide" clears it from client state.
+    - Footer shows entry count + encryption status.
+  - Added `vaultOpen`/`setVaultOpen` to app store. Wired `VaultDialog` into `AppShell`.
+  - Added a **Lock icon** button to the topbar (between theme toggle and Settings) that opens the Vault.
+  - Verified with agent-browser: opened Vault → clicked Add → filled "Netlify Deploy Token" with value `nfp-my-secret-token-12345` + a note → saved → entry appeared with masked value `nfp…2345` → expanded → clicked Reveal → full plaintext shown → Hide toggles back. No console errors.
+- Lint clean (0 errors, 0 warnings).
+
+Stage Summary:
+- **Model selector now dynamic**: saved models always appear in the dropdown, including arbitrary ids like `openai/gpt-oss-120b`. No more "saved model vanishes" bug.
+- **Settings dialog no longer overlaps**: responsive grid (stacks on narrow), `min-w-0` on flex children, scrollable body with sticky footer, bounded dropdown heights.
+- **Secure Vault shipped**: AES-256-GCM encrypted storage for API keys, tokens, passwords, and notes. 5 categories, search, reveal-on-click, copy, delete. Accessible via a Lock icon in the topbar.
+- Browser-verified all three fixes/features end-to-end with no errors.
+
+Unresolved / next-phase:
+- The Vault could integrate with the Deploy dialog (auto-fill the Netlify token from the vault).
+- Consider adding vault entry export/import (encrypted JSON backup).
+- Consider adding a vault entry "use in Settings" quick action that copies the value into the API key field.

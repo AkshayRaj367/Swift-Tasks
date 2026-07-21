@@ -3,6 +3,11 @@
 // ModelSelector — per-project provider/model picker.
 // Changing it PATCHes the project's modelConfig (per-project override),
 // never affecting other projects.
+//
+// The dropdown is DYNAMIC: it shows (a) the currently-selected model even if
+// it's not in any preset list, (b) all models from the user's saved API key
+// configs, and (c) the built-in presets. This way a user-saved model like
+// "openai/gpt-oss-120b" always appears and is selectable.
 
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAppStore } from "@/store/app-store";
@@ -10,7 +15,8 @@ import { getProjectStore } from "@/store/project-stores";
 import { PROVIDERS } from "@/lib/constants";
 import type { Provider } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronDown, Cpu } from "lucide-react";
+import { Cpu, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function ModelSelector() {
   const activeProjectId = useAppStore((s) => s.activeProjectId);
@@ -20,6 +26,7 @@ export function ModelSelector() {
 
 function ModelSelectorInner({ projectId }: { projectId: string }) {
   const apiKeys = useAppStore((s) => s.apiKeys);
+  const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
   const { toast } = useToast();
 
   // Subscribe to the active project store to read its modelConfig live.
@@ -37,6 +44,28 @@ function ModelSelectorInner({ projectId }: { projectId: string }) {
     if (k.isValid) availableProviders.add(k.provider as Provider);
   }
 
+  // Build a deduplicated list of all known models per provider, combining:
+  // presets + user's saved key models + the currently-active model.
+  // This ensures the dropdown always shows the current selection.
+  function modelsForProvider(p: Provider): { id: string; label: string; contextWindow?: string }[] {
+    const preset = PROVIDERS.find((x) => x.id === p)?.models ?? [];
+    const saved = apiKeys
+      .filter((k) => k.provider === p && k.model)
+      .map((k) => ({ id: k.model, label: k.model }));
+    const merged = [...preset, ...saved];
+    // Add the currently-active model if it's not already in the list.
+    if (p === provider && model && !merged.some((m) => m.id === model)) {
+      merged.unshift({ id: model, label: model });
+    }
+    // Dedupe by id.
+    const seen = new Set<string>();
+    return merged.filter((m) => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+  }
+
   async function applyChange(p: Provider, m: string) {
     if (!project) return;
     const providerDef = PROVIDERS.find((x) => x.id === p);
@@ -47,7 +76,6 @@ function ModelSelectorInner({ projectId }: { projectId: string }) {
     if (p === "custom") {
       baseURL = config?.baseURL;
       if (!baseURL) {
-        // Try to find a saved key for the custom provider with a baseURL.
         const savedKey = apiKeys.find((k) => k.provider === "custom" && k.baseURL);
         if (savedKey?.baseURL) baseURL = savedKey.baseURL;
       }
@@ -72,49 +100,67 @@ function ModelSelectorInner({ projectId }: { projectId: string }) {
     });
   }
 
+  // The current select value. If the current model isn't in any list, we
+  // still pass it so SelectValue can render it (Radix shows the value text).
+  const currentValue = `${provider}::${model}`;
+
   return (
-    <div className="flex items-center gap-1.5">
-      <Cpu className="h-3.5 w-3.5 text-muted-foreground" />
-      <Select value={`${provider}::${model}`} onValueChange={(v) => {
-        const [p, ...rest] = v.split("::");
-        applyChange(p as Provider, rest.join("::"));
-      }}>
-        <SelectTrigger className="h-8 w-auto gap-1 border-none bg-muted/50 px-2 text-xs font-medium hover:bg-muted">
+    <div className="flex min-w-0 items-center gap-1.5">
+      <Cpu className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <Select
+        value={currentValue}
+        onValueChange={(v) => {
+          const [p, ...rest] = v.split("::");
+          applyChange(p as Provider, rest.join("::"));
+        }}
+      >
+        <SelectTrigger className="h-8 w-auto max-w-[280px] min-w-[120px] gap-1 border-none bg-muted/50 px-2 text-xs font-medium hover:bg-muted">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="max-h-[400px] max-w-[360px]">
           {PROVIDERS.map((p) => {
             const isAvail = availableProviders.has(p.id);
+            const models = modelsForProvider(p.id);
             return (
               <SelectGroup key={p.id}>
                 <SelectLabel className="flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
-                  {p.label}
+                  <span className="truncate">{p.label}</span>
                   {!isAvail && (
-                    <span className="text-amber-500">no key</span>
+                    <span className="ml-2 shrink-0 text-amber-500">no key</span>
                   )}
                 </SelectLabel>
-                {p.models.length === 0 ? (
+                {models.length === 0 ? (
                   <SelectItem
-                    value={`${p.id}::custom`}
-                    disabled={!isAvail}
+                    value={`${p.id}::__configure__`}
+                    disabled
                     className="text-xs text-muted-foreground"
                   >
-                    Configure in Settings
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setSettingsOpen(true);
+                      }}
+                      className="flex items-center gap-1 text-primary"
+                    >
+                      <Plus className="h-3 w-3" /> Add in Settings
+                    </button>
                   </SelectItem>
                 ) : (
-                  p.models.map((m) => (
+                  models.map((m) => (
                     <SelectItem
-                      key={m.id}
+                      key={`${p.id}-${m.id}`}
                       value={`${p.id}::${m.id}`}
                       disabled={!isAvail}
                       className="text-xs"
                     >
-                      {m.label}
-                      {m.contextWindow && (
-                        <span className="ml-auto pl-2 text-[10px] text-muted-foreground">
-                          {m.contextWindow}
-                        </span>
-                      )}
+                      <span className="flex items-center gap-2">
+                        <span className="truncate font-mono text-[11px]">{m.label}</span>
+                        {m.contextWindow && (
+                          <span className="ml-auto shrink-0 pl-2 text-[10px] text-muted-foreground">
+                            {m.contextWindow}
+                          </span>
+                        )}
+                      </span>
                     </SelectItem>
                   ))
                 )}
