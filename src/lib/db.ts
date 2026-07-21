@@ -8,9 +8,16 @@ neonConfig.webSocketConstructor = ws
 
 let db: PrismaClient
 
+const connectionString = process.env.DATABASE_URL
+
 if (process.env.NODE_ENV === 'production') {
+  if (!connectionString) {
+    throw new Error(
+      'DATABASE_URL environment variable is missing on Vercel. Please add DATABASE_URL in Vercel Project Settings -> Environment Variables and Redeploy.'
+    )
+  }
   // Production: use connection pool adapter for serverless
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+  const pool = new Pool({ connectionString })
   const adapter = new PrismaNeon(pool)
   db = new PrismaClient({ adapter })
 } else {
