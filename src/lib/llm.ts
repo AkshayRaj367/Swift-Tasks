@@ -226,10 +226,6 @@ function normalizeAIError(err: unknown, provider: string): LLMError {
   const combined = msg + " " + body;
 
   // Region / country not supported — check for specific geo-restriction indicators.
-  // NOTE: many providers (e.g. Groq) return 403 "Forbidden" for INVALID API KEYS,
-  // not just geo-restriction. We must distinguish:
-  //   - "unsupported_country" / "region" / "territory" in body → actual geo-block
-  //   - "Forbidden" / "Invalid API Key" without geo keywords → auth failure
   if (/unsupported_country|region.*not.*supported|territory.*not.*supported|geo/i.test(combined)) {
     return makeLLMError(
       `${provider} is not available in your region (HTTP 403). This is a geo-restriction on the provider's endpoint. Try OpenRouter or the "platform" demo model instead. (${msg})`,
@@ -238,14 +234,25 @@ function normalizeAIError(err: unknown, provider: string): LLMError {
     );
   }
 
-  // Auth failures — 401 OR 403 with "Forbidden"/"Invalid API Key" (Groq uses 403 for bad keys).
+  // Auth failures — 401 OR 403.
+  // NOTE: Some providers (e.g. Groq) return 403 "Forbidden" for BOTH invalid keys
+  // AND IP/region blocks. Since we can't distinguish from the error alone, we give
+  // a combined message that covers both causes. The auto-fallback to the platform
+  // model will still fire so the user gets a working result.
   if (
     status === 401 ||
     status === 403 ||
     /401|unauthor|invalid.*key|incorrect.*api|forbidden|not.*authorized/i.test(combined)
   ) {
+    // Give provider-specific guidance.
+    let guidance: string;
+    if (provider === "custom") {
+      guidance = `This could be: (1) an invalid/expired API key, (2) the wrong base URL for your key, or (3) the provider is blocking this server's IP/region. If your key is valid, the provider may not allow requests from this server. Try OpenRouter or the "platform" demo model instead.`;
+    } else {
+      guidance = `Your API key is invalid, expired, or the provider is blocking this server's IP/region. Double-check the key in Settings. If the key is valid, try OpenRouter or the "platform" demo model.`;
+    }
     return makeLLMError(
-      `Authentication failed for ${provider} (HTTP ${status}). Your API key is invalid, expired, or missing. Double-check the key in Settings — make sure you copied it correctly and it hasn't expired. (${msg})`,
+      `Authentication failed for ${provider} (HTTP ${status}). ${guidance} (${msg})`,
       "AUTH",
       status
     );

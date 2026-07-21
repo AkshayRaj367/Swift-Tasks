@@ -547,3 +547,33 @@ Stage Summary:
 - **403 error correctly classified**: Groq's 403 "Forbidden" for invalid keys now shows "Your API key is invalid" instead of the misleading "geo-restriction" message. Actual geo-restrictions (with `unsupported_country` in the body) still show the region-blocked message.
 - **Model names verified and updated**: removed deprecated Groq model (`mixtral-8x7b-32768`), updated OpenRouter Claude model ID to `anthropic/claude-sonnet-latest`, added context windows to all Groq presets, added `gpt-4.1-mini` and `llama-3.3-70b-instruct`.
 - **Better error messages**: the models fetch route now gives specific, actionable messages for 401/403/404/429 instead of a generic "Failed to fetch models".
+
+---
+
+Task ID: 13
+Agent: main (Z.ai Code)
+Task: Diagnose why a valid Groq API key still gets 403 Forbidden after entering base URL.
+
+Work Log:
+- **Deep diagnosis**: tested Groq's API directly from the server with `curl`:
+  - `curl https://api.groq.com/openai/v1/models` (NO auth header) → HTTP 403 "Forbidden"
+  - `curl https://api.groq.com/openai/v1/models -H "Authorization: Bearer gsk_test123"` → HTTP 403 "Forbidden"
+  - This means Groq returns 403 for **ALL requests from this server's IP** (47.57.242.119, Alibaba Cloud HK), regardless of whether a valid key is provided.
+- **Root cause confirmed**: Groq blocks this server's IP address entirely. The user's API key is likely valid — it would work from their local machine or a different server. But since Swift Tasks runs server-side, the request originates from this server's IP, which Groq blocks.
+- **Compared providers**:
+  - OpenRouter → HTTP 200 (works, IP not blocked)
+  - Groq → HTTP 403 (IP blocked entirely)
+  - DeepSeek → HTTP 401 (reachable, just needs valid key)
+- **Updated error messages** in `src/lib/llm.ts` `normalizeAIError()`:
+  - For `custom` provider 403: "This could be: (1) an invalid/expired API key, (2) the wrong base URL for your key, or (3) **the provider is blocking this server's IP/region**. If your key is valid, the provider may not allow requests from this server. Try OpenRouter or the platform demo model instead."
+  - For other providers 403: "Your API key is invalid, expired, or the provider is blocking this server's IP/region."
+- **Updated models fetch route** (`src/app/api/settings/api-keys/models/route.ts`):
+  - 401/403 message now says: "This could be an invalid/expired API key, OR the provider is blocking this server's IP/region. If your key is valid, the provider may not allow requests from this server — try OpenRouter or the platform demo model."
+- **Auto-fallback verified**: generated with a Groq config → 403 → auto-fallback to platform model → 1 file generated successfully. The user always gets a working result.
+- Lint clean.
+
+Stage Summary:
+- **Root cause identified**: Groq blocks this server's IP (47.57.242.119). The user's key is likely valid but Groq won't accept requests from this server. This is a server-side IP block, not a key issue.
+- **Error messages updated**: now clearly explain that 403 could be an IP/region block (not just an invalid key), and suggest OpenRouter or the platform demo model as alternatives.
+- **Auto-fallback works**: Groq 403 → platform model → successful generation. The user always gets a result.
+- **Recommendation for the user**: Use **OpenRouter** (works from this server, supports Groq models via `groq/llama-3.3-70b-versatile`) or the **platform demo model** (no key needed). Direct Groq API won't work from this server due to the IP block.

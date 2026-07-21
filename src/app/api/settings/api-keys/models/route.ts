@@ -103,7 +103,7 @@ async function fetchModels(
     // Provide a clear, actionable error message based on the status code.
     let friendlyMsg: string;
     if (res.status === 401 || res.status === 403) {
-      friendlyMsg = `Your API key is invalid or missing (HTTP ${res.status}). Check that you copied the key correctly and it hasn't expired.`;
+      friendlyMsg = `Authentication failed (HTTP ${res.status}). This could be an invalid/expired API key, OR the provider is blocking this server's IP/region. If your key is valid, the provider may not allow requests from this server — try OpenRouter or the "platform" demo model.`;
     } else if (res.status === 404) {
       friendlyMsg = `The models endpoint was not found (HTTP 404). Check that the base URL is correct.`;
     } else if (res.status === 429) {
