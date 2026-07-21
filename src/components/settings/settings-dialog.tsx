@@ -41,6 +41,7 @@ import {
   ShieldCheck,
   Eye,
   EyeOff,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -59,16 +60,84 @@ export function SettingsDialog() {
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
+
+  // Auto-fetched models from the provider's /models endpoint.
+  interface FetchedModel {
+    id: string;
+    label?: string;
+    ownedBy?: string;
+    contextWindow?: string;
+  }
+  const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+
   const { toast } = useToast();
 
   const providerDef = PROVIDERS.find((p) => p.id === provider)!;
 
-  // Reset model when provider changes.
+  // Reset model + baseURL when provider changes.
   useEffect(() => {
     setModel(providerDef.models[0]?.id || "");
     setBaseURL(providerDef.defaultBaseURL || "");
     setTestResult(null);
+    setFetchedModels([]);
+    setModelsError(null);
   }, [provider, providerDef]);
+
+  // Determine whether we have enough info to auto-fetch models.
+  const canFetchModels =
+    provider === "platform"
+      ? false
+      : provider === "custom"
+        ? apiKey.trim().length > 0 && baseURL.trim().length > 0
+        : apiKey.trim().length > 0;
+
+  // Auto-fetch models when the user has entered a key (+ baseURL for custom).
+  // Debounced so it doesn't fire on every keystroke.
+  useEffect(() => {
+    if (!canFetchModels) {
+      setFetchedModels([]);
+      setModelsError(null);
+      return;
+    }
+    const id = setTimeout(() => {
+      void fetchModels();
+    }, 600);
+    return () => clearTimeout(id);
+  }, [apiKey, baseURL, provider, canFetchModels]);
+
+  async function fetchModels() {
+    setModelsLoading(true);
+    setModelsError(null);
+    try {
+      const res = await fetch("/api/settings/api-keys/models", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          provider,
+          apiKey: apiKey.trim(),
+          baseURL: baseURL.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setModelsError(data.error || "Failed to fetch models");
+        setFetchedModels([]);
+      } else {
+        setFetchedModels(data.models || []);
+        // Auto-select the first model if none selected.
+        if (data.models?.length > 0 && !model) {
+          setModel(data.models[0].id);
+        }
+      }
+    } catch (err) {
+      setModelsError(String(err));
+      setFetchedModels([]);
+    } finally {
+      setModelsLoading(false);
+    }
+  }
 
   async function handleTest() {
     if (provider !== "platform" && !apiKey) {
@@ -203,8 +272,46 @@ export function SettingsDialog() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Model</Label>
-              {providerDef.models.length > 0 ? (
+              <Label className="flex items-center justify-between text-xs">
+                <span>Model</span>
+                {provider !== "platform" && (
+                  <button
+                    type="button"
+                    onClick={() => void fetchModels()}
+                    disabled={!canFetchModels || modelsLoading}
+                    className="flex items-center gap-1 text-[10px] text-primary hover:underline disabled:opacity-40 disabled:no-underline"
+                    title="Fetch available models from the provider"
+                  >
+                    {modelsLoading ? (
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-2.5 w-2.5" />
+                    )}
+                    {modelsLoading ? "Fetching…" : "Refresh models"}
+                  </button>
+                )}
+              </Label>
+
+              {/* Fetched models take priority; fall back to presets; fall back to manual input. */}
+              {fetchedModels.length > 0 ? (
+                <Select value={model} onValueChange={setModel}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select a model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {fetchedModels.map((m) => (
+                      <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
+                        <span className="flex items-center gap-2">
+                          <span>{m.label || m.id}</span>
+                          {m.contextWindow && (
+                            <span className="text-[9px] text-muted-foreground">{m.contextWindow}</span>
+                          )}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : providerDef.models.length > 0 ? (
                 <Select value={model} onValueChange={setModel}>
                   <SelectTrigger className="h-9">
                     <SelectValue placeholder="Select model" />
@@ -224,6 +331,28 @@ export function SettingsDialog() {
                   placeholder="e.g. llama-3.1-70b"
                   className="h-9"
                 />
+              )}
+
+              {/* Status line under the model picker */}
+              {provider !== "platform" && (
+                <div className="min-h-[14px] text-[10px]">
+                  {modelsLoading ? (
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                      Fetching available models…
+                    </span>
+                  ) : modelsError ? (
+                    <span className="text-amber-600 dark:text-amber-400">
+                      {modelsError} — you can still type a model id manually.
+                    </span>
+                  ) : fetchedModels.length > 0 ? (
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      {fetchedModels.length} model{fetchedModels.length === 1 ? "" : "s"} available
+                    </span>
+                  ) : canFetchModels ? (
+                    <span className="text-muted-foreground">Enter a key to auto-fetch models</span>
+                  ) : null}
+                </div>
               )}
             </div>
           </div>

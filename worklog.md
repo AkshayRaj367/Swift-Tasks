@@ -141,3 +141,45 @@ Stage Summary:
 Unresolved / next-phase:
 - The user's existing saved `custom` key still has no baseURL (can't be auto-fixed without the plaintext key). The auto-fallback handles this gracefully, but the user should re-save the key with a Groq baseURL via the new preset chips for native Groq support.
 - Consider adding a "Fix configuration" inline button in the chat panel when a fallback occurs, linking straight to Settings.
+
+---
+
+Task ID: 3
+Agent: main (Z.ai Code)
+Task: Fix duplicate React key warning in chat-message.tsx; implement auto-fetching of available models when an API key is pasted in Settings.
+
+Work Log:
+- **Bug fix: duplicate React key warning** in `src/components/chat/chat-message.tsx:80`.
+  - Root cause: the `files` array from `message.meta.files` can contain duplicates when a file is written/modified multiple times during a generation (e.g. `app.js` appears twice). The `.map((f) => <span key={f}>)` then produced duplicate React keys.
+  - Fix: dedupe with `Array.from(new Set(files)).map(...)` before rendering. Same fix was already applied to `generation-log.tsx` in the prior round.
+- **New feature: auto-fetch available models when API key is pasted.**
+  - New API route `POST /api/settings/api-keys/models` (`src/app/api/settings/api-keys/models/route.ts`):
+    - Takes `{ provider, apiKey, baseURL? }`.
+    - For OpenAI-compatible providers (openrouter/openai/custom + any OpenAI-compatible endpoint): `GET {baseURL}/models` with `Authorization: Bearer {key}`. Parses the standard `{ data: [{ id, owned_by, context_length }] }` shape. OpenRouter's richer shape (with `name` + `context_length`) is also handled.
+    - For Anthropic: `GET {baseURL}/v1/models` with `x-api-key` + `anthropic-version` headers (different auth scheme + response shape `{ data: [{ id, display_name }] }`).
+    - Sorts models: deprioritizes utility models (embed/image/tts/whisper/moderation/audio/realtime), then alphabetical.
+    - Formats context windows (e.g. 128000 → "128K", 1000000 → "1.0M").
+    - 15s timeout, clear error messages.
+  - Updated `src/components/settings/settings-dialog.tsx`:
+    - New state: `fetchedModels`, `modelsLoading`, `modelsError`.
+    - `canFetchModels` computed: true when a key is entered (+ baseURL for custom provider).
+    - Debounced auto-fetch (600ms after the user stops typing the key/baseURL).
+    - Model picker priority: fetched models > preset models > manual input.
+    - "Refresh models" button next to the Model label (with Loader2 spinner while fetching).
+    - Status line under the picker: "Fetching…", "N models available", error message, or "Enter a key to auto-fetch models".
+    - Auto-selects the first fetched model if none is selected.
+- Lint clean (0 errors, 0 warnings).
+- Restarted dev server; verified with agent-browser:
+  - Opened Settings dialog, selected OpenRouter provider.
+  - Typed a key into the API Key field.
+  - Within ~600ms the model dropdown auto-populated with real OpenRouter models: Claude (Sonnet/Opus/Haiku, 1.0M/200K), Gemini (Flash/Pro, 1.0M), GPT/GPT Mini, Grok, Kimi — each with context window badges.
+  - No duplicate key warnings after generating a Tip Calculator (previously triggered the warning).
+
+Stage Summary:
+- **Duplicate key warning eliminated**: file badges in chat messages are now deduplicated.
+- **Auto-fetch models feature shipped**: pasting an API key in Settings now automatically fetches and displays the real list of available models from the provider's `/models` endpoint — no more guessing model ids. Works for OpenAI, OpenRouter, Anthropic, Groq, Together, Fireworks, DeepSeek, Mistral, and any OpenAI-compatible custom endpoint.
+- Browser-verified: OpenRouter returned 10+ real models with context windows; no console errors after generation.
+
+Unresolved / next-phase:
+- The model-fetch uses the raw API key the user is currently typing (not yet saved). If the key is invalid, the /models endpoint may still return models for some providers (OpenRouter's list is public), but the key won't actually work for generation. The existing "Test" button validates the key+model combo separately.
+- Consider caching fetched models per (provider, baseURL) to avoid re-fetching on every dialog open.

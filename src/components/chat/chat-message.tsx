@@ -76,7 +76,7 @@ export function ChatMessageView({ message }: { message: ChatMessage }) {
         </div>
         {files && files.length > 0 && (
           <div className="flex flex-wrap gap-1">
-            {files.map((f) => (
+            {Array.from(new Set(files)).map((f) => (
               <span
                 key={f}
                 className="inline-flex items-center gap-1 rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
